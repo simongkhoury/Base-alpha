@@ -643,7 +643,7 @@ function bindSheet() {
     if (d.clr) { Mic.clear(d.clr); renderSheet(); return; }
     // voice lines
     if (d.vplay) { const ta = $(`textarea[data-vk="${d.vplay}"]`); const vers = (ta ? ta.value : Lines.text(d.vplay)).split('\n').map(x => x.trim()).filter(Boolean);
-      const sample = { name: ME.name || 'Jordi', where: 'the kitchen', monster: 'zombie', count: 'Two zombies', weapon: 'Striker AR', reward: 'a medkit', rank: 'Sergeant', names: 'Dad and Jordi', medic: 'Dad' };
+      const sample = { name: ME.name || 'Rookie', where: 'the kitchen', monster: 'zombie', count: 'Two zombies', weapon: 'Striker AR', reward: 'a medkit', rank: 'Sergeant', names: 'Dad and Rookie', medic: 'Dad' };
       const line = (vers[Math.floor(Math.random() * vers.length)] || '').replace(/\{(\w+)\}/g, (m, n) => sample[n] || m); if (line) { S.sound = true; Voice.say(line); ticker(line, 'radio'); } return; }
     if (d.vreset) { act({ a: 'line', k: d.vreset, reset: true }); setTimeout(renderSheet, 100); return; }
     // movement and scope
