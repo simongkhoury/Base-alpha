@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Base Alpha</title>
+<meta name="theme-color" content="#141a11">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Base Alpha">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Black+Ops+One&family=Share+Tech+Mono&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+  <header class="bar">
+    <button id="emblem" class="emblem" aria-label="Base Alpha. Press and hold for command controls">
+      <span class="lp"></span>
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 3 42 10v14c0 10-7.5 18.5-18 21C13.5 42.5 6 34 6 24V10z" fill="#2e3a25" stroke="#ffc83a" stroke-width="3"/><path d="m24 13 3.2 6.6 7.3 1-5.3 5.1 1.3 7.2L24 29.5l-6.5 3.4 1.3-7.2-5.3-5.1 7.3-1z" fill="#ffc83a"/></svg>
+      <span class="et"><b id="cmdTitle">BASE ALPHA</b><small id="cmdName"></small></span>
+    </button>
+    <div class="spacer"></div>
+    <div id="team" class="team"></div>
+    <button id="micBtn" class="ibtn" aria-label="Blaster microphone"></button>
+    <button id="modeBtn" class="ibtn" aria-label="Switch to the map"></button>
+    <button id="soundBtn" class="ibtn" aria-label="Sound on this phone"></button>
+    <button id="pauseBtn" class="ibtn" aria-label="Pause the game"></button>
+  </header>
+
+  <div id="ticker" class="ticker" role="status" aria-live="polite">
+    <span class="tic" id="tkIc"></span><span id="tkText">Base Alpha standing by.</span>
+    <button id="repeatBtn" class="ibtn" aria-label="Repeat last message"></button>
+  </div>
+  <div id="banner" class="banner" hidden></div>
+
+  <main>
+    <section id="dock" class="view">
+      <div class="stage" id="radarWrap"><canvas id="radar" aria-label="Radar. Tap a monster to target it."></canvas></div>
+      <div class="side" id="dockSide"></div>
+    </section>
+    <section id="field" class="view" hidden>
+      <div class="stage" id="mapWrap"><canvas id="map" aria-label="Map of the apartment. Tap a room to say where you are."></canvas><span class="maphint">Tap a room to move there</span></div>
+      <div class="side" id="fieldSide"></div>
+    </section>
+  </main>
+</div>
+
+<div id="padHome" hidden>
+  <div class="status" id="statusRow">
+    <div id="shbar" class="shbar"><span id="shIc"></span><div class="track"><div class="fill" id="shFill"></div></div><span id="shPct">100</span></div>
+    <span id="mchip" class="mchip" hidden></span>
+  </div>
+  <div class="pad" id="pad">
+    <button class="pb fire" id="fireBtn" aria-label="Fire"><span class="acc" id="accTxt"></span><span id="fireIc"></span><em>FIRE</em></button>
+    <button class="pb ctxb" id="ctxBtn" aria-label="Action"><span id="ctxIc"></span><em id="ctxT">SCAN</em><small id="ctxS"></small><span class="meter" id="ctxMeter" hidden><i></i></span></button>
+    <button class="pb wpn" id="wpnBtn" aria-label="Weapons and inventory"><img id="wpnImg" alt=""><span class="am" id="wpnAm"></span></button>
+    <button class="pb mode" id="frzBtn" aria-label="Freeze round"><span id="frzIc"></span><span class="cd"></span></button>
+    <button class="pb mode bomb" id="bombBtn" aria-label="Bomb round"><span id="bombIc"></span><span class="cnt" id="bombCnt"></span></button>
+    <button class="pb shield" id="shieldBtn" aria-label="Shield"><span id="shieldIc"></span><span class="cd"></span></button>
+    <button class="pb radio" id="radioBtn" aria-label="Radio. Hold to talk, tap for calls"><span id="radioIc"></span></button>
+  </div>
+</div>
+
+<div id="ovStart" class="ov"><div class="card" id="lobby"></div></div>
+<div id="ovPause" class="ov" hidden><button class="ibtn gearbtn" data-gear aria-label="Parent controls"></button><div class="card">
+  <h1>BREAK TIME</h1><p>Radar on hold. Nothing moves until you resume.</p><button class="big" id="resumeBtn"></button></div></div>
+<div id="ovEmerg" class="ov" hidden><button class="ibtn gearbtn" data-gear aria-label="Parent controls"></button><div class="card">
+  <h1>SHIELD DOWN</h1><h2>HOLD TO REPAIR</h2><button class="holdbig" id="emergBtn" aria-label="Hold to repair the shield"></button>
+  <p>One trooper holds the button. The others cover the base!</p></div></div>
+<div id="ovVictory" class="ov" hidden><button class="ibtn gearbtn" data-gear aria-label="Parent controls"></button><div class="card">
+  <h1>BASE SECURED</h1><div class="plist" id="vPlayers"></div><p id="vNote"></p>
+  <div class="row"><button class="big" id="keepBtn"></button><button class="big alt" id="vNightBtn"></button></div></div></div>
+<div id="ovNight" class="ov" hidden><button class="ibtn gearbtn" data-gear aria-label="Parent controls"></button><div class="card">
+  <span id="moonIc"></span><h1>NIGHT WATCH</h1><p id="nightNote">Good night, troopers. Base Alpha is safe.</p>
+  <button class="big alt" id="wakeBtn"></button></div></div>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sh-h"><h3 id="shTitle">COMMAND</h3><button class="ibtn" id="shClose" aria-label="Close"></button></div>
+  <div class="tabs" id="shTabs" role="tablist"></div>
+  <div class="sh-b" id="shBody"></div>
+</div>
+<div id="toast" class="toast" hidden></div>
+<input type="file" id="importIn" accept="application/json,.json" hidden>
+
+<script src="vendor/peerjs.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
