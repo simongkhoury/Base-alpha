@@ -43,12 +43,16 @@ export const Track = {
     const P = App.game.G.players[App.myId()]; this.resetTo(P ? P.room : 'base');
   },
   disable() { this.on = false; S.trackOn = false; saveS(); },
+  // Where this trooper faces on the floor plan (degrees, 0 = up the map), or null when not tracking.
+  aim() { return this.on && this.cal && !this.calib && this.heading != null && performance.now() - (this.hT || 0) < 2500 ? wrap(this.heading - this.cal.offset) : null; },
+  ready() { return this.aim() != null && !!this.p; },
   onOrient(e) {
     let h = null;
     if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) h = e.webkitCompassHeading;
     else if (e.absolute || e.type === 'deviceorientationabsolute') h = compassFromEuler(e.alpha, e.beta, e.gamma);
     if (h == null || isNaN(h)) return;
     const so = (screen.orientation && screen.orientation.angle) || 0; h = wrap(h + so);
+    this.hT = performance.now();
     if (this.heading == null) this.heading = h;
     else { const d = ((h - this.heading + 540) % 360) - 180; this.heading = wrap(this.heading + d * .25); }
   },

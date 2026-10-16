@@ -73,15 +73,17 @@ export const T = {
 export const MONSTER_MENU = [['z', 'Zombie'], ['h', 'Horde'], ['tk', 'Tank'], ['sp', 'Speedy'], ['iv', 'Invisible'], ['sl', 'Sleepy giant'], ['dn', 'Dancer'], ['my', 'Mystery']];
 
 // ---- Weapons ----
-// acc: hit chance up close. fall: chance lost per 100 units of distance. Never below 35%.
+// acc: hit chance up close. fall: chance lost per 100 units of distance (never below 35% inside range).
+// rng: effective range in map units (a room is about 350). cone: aim half-angle in degrees at full range
+// (60 degrees up close). Outside range or aim the chance falls quickly towards 5% (see aim.js).
 export const MIN_ACC = 0.35;
 export const WEAPONS = {
-  handgun: { n: 'Handgun', short: 'PISTOL', dmg: 1, acc: 0.86, fall: 0.10, ammo: Infinity, cd: 0.35, modes: [], pack: 0, d: 'Weak but never runs out.' },
-  striker: { n: 'Striker AR', short: 'STRIKER', dmg: 2, acc: 0.88, fall: 0.07, ammo: 45, cd: 0.2, modes: ['freeze', 'bomb'], pack: 30, d: 'Balanced rifle. Freeze and bomb rounds.' },
-  viper: { n: 'Viper AR', short: 'VIPER', dmg: 1, acc: 0.84, fall: 0.12, ammo: 60, cd: 0.1, modes: [], pack: 45, d: 'Super fast. Best up close.' },
-  longshot: { n: 'Longshot AR', short: 'LONGSHOT', dmg: 4, acc: 0.93, fall: 0.03, ammo: 16, cd: 0.8, modes: ['freeze'], pack: 10, d: 'Slow, accurate from far away, hits hard.' },
-  laser: { n: 'Laser Rifle', short: 'LASER', dmg: 4, acc: 0.95, fall: 0.04, ammo: Infinity, cd: 0.2, recharge: 3, modes: ['freeze'], pack: 0, d: 'Never runs out. Needs 3 seconds to recharge.' },
-  cannon: { n: 'Heavy Cannon', short: 'CANNON', dmg: 6, acc: 0.76, fall: 0.08, ammo: 8, cd: 1.2, modes: ['bomb', 'freeze'], splash: 1, pack: 4, d: 'Huge damage. Bomb rounds hit everything nearby.' }
+  handgun: { n: 'Handgun', short: 'PISTOL', dmg: 1, acc: 0.86, fall: 0.10, rng: 450, cone: 42, ammo: Infinity, cd: 0.35, modes: [], pack: 0, d: 'Weak but never runs out.' },
+  striker: { n: 'Striker AR', short: 'STRIKER', dmg: 2, acc: 0.88, fall: 0.07, rng: 520, cone: 38, ammo: 45, cd: 0.2, modes: ['freeze', 'bomb'], pack: 30, d: 'Balanced rifle. Freeze and bomb rounds.' },
+  viper: { n: 'Viper AR', short: 'VIPER', dmg: 1, acc: 0.84, fall: 0.12, rng: 400, cone: 46, ammo: 60, cd: 0.1, modes: [], pack: 45, d: 'Super fast. Best up close.' },
+  longshot: { n: 'Longshot AR', short: 'LONGSHOT', dmg: 4, acc: 0.93, fall: 0.03, rng: 1000, cone: 26, ammo: 16, cd: 0.8, modes: ['freeze'], pack: 10, d: 'Slow, accurate from far away, hits hard.' },
+  laser: { n: 'Laser Rifle', short: 'LASER', dmg: 4, acc: 0.95, fall: 0.04, rng: 650, cone: 32, ammo: Infinity, cd: 0.2, recharge: 3, modes: ['freeze'], pack: 0, d: 'Never runs out. Needs 3 seconds to recharge.' },
+  cannon: { n: 'Heavy Cannon', short: 'CANNON', dmg: 6, acc: 0.76, fall: 0.08, rng: 480, cone: 42, ammo: 8, cd: 1.2, modes: ['bomb', 'freeze'], splash: 1, pack: 4, d: 'Huge damage. Bomb rounds hit everything nearby.' }
 };
 export const WEAPON_ORDER = ['handgun', 'striker', 'viper', 'longshot', 'laser', 'cannon'];
 export const FREEZE_ROUND_CD = 10;
@@ -92,9 +94,11 @@ export const ITEMS = {
   freezebomb: { n: 'Freeze bomb', d: 'Freezes every monster for 6 seconds.' },
   bomb: { n: 'Bomb rounds', d: 'Load into the Striker or Cannon. Hits everything nearby.' },
   drone: { n: 'Scout drone', d: 'Scans the apartment by itself for 90 seconds.' },
-  turret: { n: 'Mini turret', d: 'Shoots monsters near you for 30 seconds.' }
+  turret: { n: 'Mini turret', d: 'Shoots monsters near you for 30 seconds.' },
+  booster: { n: 'Laser booster', d: 'Laser recharges twice as fast for 20 shots.' }
 };
-export const ITEM_ORDER = ['medkit', 'freezebomb', 'bomb', 'drone', 'turret'];
+export const ITEM_ORDER = ['medkit', 'freezebomb', 'bomb', 'booster', 'drone', 'turret'];
+export const BOOST_SHOTS = 20;
 export const GEAR = {
   scope: { n: 'Scope', d: '+12% accuracy with every weapon.' },
   vest: { n: 'Armor vest', d: 'Half the chance of getting hurt.' },
@@ -105,8 +109,8 @@ export function starterInv() {
   return {
     w: { handgun: 1, striker: 1 },
     ammo: { striker: 45, viper: 0, longshot: 0, cannon: 0 },
-    it: { medkit: 1, freezebomb: 1, bomb: 0, drone: 0, turret: 0 },
-    gear: {}
+    it: { medkit: 1, freezebomb: 1, bomb: 0, drone: 0, turret: 0, booster: 0 },
+    gear: {}, boost: 0
   };
 }
 
@@ -120,7 +124,7 @@ export const MIS = {
   supply: { ic: 'box', t: 'SUPPLY RUN', go: r => `Supply run! Get a power cell from ${r}. Any toy can be the power cell.`, act: 'tap', need: 1, btn: 'GRAB', bic: 'hand', actSay: 'Grab the power cell!', done: 'Power cell secured! Hurry back to Base Alpha!', reward: ['bomb', 'freezebomb', 'turret'] },
   ammo: { ic: 'ammo', t: 'AMMO RUN', go: r => `Ammo run! There's an ammo crate in ${r}. Go get it!`, act: 'tap', need: 1, btn: 'PICK UP', bic: 'ammo', actSay: 'Pick up the ammo crate!', done: 'Ammo crate secured! Back to base!', reward: ['ammo'] },
   rescue: { ic: 'teddy', t: 'RESCUE', go: r => `Distress call! A survivor is trapped in ${r}. Bring them back to base!`, act: 'tap', need: 1, btn: 'RESCUE', bic: 'teddy', actSay: 'Find the survivor and pick them up gently.', done: 'Survivor rescued! Bring them home to Base Alpha!', reward: ['medkit'] },
-  gen: { ic: 'bolt', t: 'GENERATOR', go: r => `Power failure! The radar is down. Go restart the generator in ${r}!`, act: 'hold', need: 1, btn: 'HOLD', bic: 'bolt', actSay: 'Hold the button to restart the generator!', done: 'Generator running! Radar back online. Return to base!', reward: ['drone'] },
+  gen: { ic: 'bolt', t: 'GENERATOR', go: r => `Power failure! The radar is down. Go restart the generator in ${r}!`, act: 'hold', need: 1, btn: 'HOLD', bic: 'bolt', actSay: 'Hold the button to restart the generator!', done: 'Generator running! Radar back online. Return to base!', reward: ['drone', 'booster'] },
   sensor: { ic: 'antenna', t: 'FIX SENSOR', go: r => `A radar sensor is broken in ${r}. Go fix it, Commander!`, act: 'tap', need: 5, btn: 'FIX', bic: 'wrench', actSay: 'Tap fix five times to repair the sensor.', done: 'Sensor fixed! Return to base!', reward: ['scope', 'drone'] },
   scout: { ic: 'binos', t: 'SCOUT', go: r => `Scout mission. Check ${r} for monsters.`, act: 'tap', need: 1, btn: 'LOOK', bic: 'binos', actSay: 'Look around carefully, then press the button.', reward: ['ammo'] },
   sneak: { ic: 'feet', t: 'SNEAK', go: r => `A horde is sleeping in ${r}. Tiptoe through without waking them!`, act: 'tap', need: 1, btn: 'MADE IT', bic: 'feet', actSay: 'Shh. Tiptoe. Quiet as a mouse.', done: 'You did it! They are still snoring. Back to base, quietly.', reward: ['nvg', 'vest'] }

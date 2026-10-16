@@ -269,7 +269,28 @@ SOUNDS = {
     'hurt_iv': lambda: ghost(False), 'hurt_sl': lambda: sleepy(False), 'hurt_my': lambda: blip(False),
     'die_z': zombie_die, 'die_h': lambda: horde(True), 'die_tk': lambda: tank(True), 'die_sp': lambda: speedy(True),
     'die_iv': lambda: ghost(True), 'die_sl': lambda: sleepy(True), 'die_dn': dancer_die, 'die_my': lambda: blip(True),
+    'ric_wall': lambda: ric_wall(), 'booster': lambda: booster(),
 }
+def ric_wall():
+    # bullet into a wall: dull thwack, plaster crumbles, a tiny ping
+    d = 0.7; thwack = lp(noise(d), 1200) * env_exp(d, 0.02) * 1.6
+    s, _ = sweep(160, 70, d); thwack += s * env_exp(d, 0.05)
+    crumble = np.zeros(int(SR * d))
+    for _ in range(22):
+        p = int(SR * rng.uniform(0.03, 0.5)); g = bp(noise(0.015), 900, 4000) * env_exp(0.015, 0.003) * rng.uniform(.1, .4)
+        crumble[p:p + len(g)] += g[:len(crumble) - p]
+    ping, _ = sweep(2600, 2200, 0.2); ping = ping * env_exp(0.2, 0.05) * 0.25
+    return norm(room(punch(mix(thwack, crumble, at(ping, 0.02)), 2.0), 0.35, 0.2, 5000))
+
+def booster():
+    # laser booster clicks in: rising charge whine, buzz, then a clunk
+    d = 1.0; x = t(d); s, f = sweep(220, 2400, 0.8)
+    whine = s * np.clip(np.arange(len(s)) / len(s), 0, 1) ** 0.5 * 0.6
+    buzz = np.sign(np.sin(2 * np.pi * 120 * t(0.8))) * 0.08 * env_exp(0.8, 0.5)
+    clunk = lp(noise(0.15), 900) * env_exp(0.15, 0.02) * 1.2
+    zap = bp(noise(0.25), 3000, 9000) * env_exp(0.25, 0.06) * 0.5
+    return norm(room(mix(whine, buzz, at(clunk, 0.8), at(zap, 0.8)), 0.3, 0.2, 8000))
+
 def explosion_cannon():
     a = gunshot(150, 1500, 0.12, 55, 1.6, 1.2, 0.7, 0.3, 3.5)
     return norm(mix(a, lp(noise(0.6), 250) * env_exp(0.6, 0.15) * 0.6))

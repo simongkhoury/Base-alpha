@@ -44,7 +44,7 @@
       <div class="side" id="dockSide"></div>
     </section>
     <section id="field" class="view" hidden>
-      <div class="stage" id="mapWrap"><canvas id="map" aria-label="Map of the apartment. Tap a room to say where you are."></canvas><span class="maphint">Tap a room to say where you are</span></div>
+      <div class="stage" id="mapWrap"><canvas id="map" aria-label="Map of the apartment. Tap a room to say where you are."></canvas><span class="maphint">Tap a room to say where you are</span><button id="zoomFab" class="ibtn fab fab3" aria-label="Zoom in on me"></button></div>
       <div class="side" id="fieldSide"></div>
     </section>
   </main>
@@ -53,6 +53,7 @@
 <div id="padHome" hidden>
   <div id="scope" class="scope" hidden><video id="scopeVid" playsinline muted autoplay></video><canvas id="scopeCv" aria-label="AR scope. Tap a monster to target it."></canvas><button id="scopeX" class="scopex" aria-label="Close the scope"></button></div>
   <button id="moveFab" class="ibtn fab" aria-label="Movement tracking and AR scope"></button>
+  <button id="trackFab" class="ibtn fab fab2" aria-label="Tracking on or off"></button>
   <div class="status" id="statusRow">
     <div id="shbar" class="shbar"><span id="shIc"></span><div class="track"><div class="fill" id="shFill"></div></div><span id="shPct">100</span></div>
     <span id="mchip" class="mchip" hidden></span>

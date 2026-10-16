@@ -1,8 +1,9 @@
 // Game state and the simulation. Only the commander's phone runs tick() and apply();
 // other phones send actions and draw the state they receive.
 import { App, rnd, pick, clamp } from './core.js';
-import { ROOMS, B, route, roomAt, MISSION_ROOMS, T, WEAPONS, MIN_ACC, FREEZE_ROUND_CD, ITEMS, GEAR, GEAR_ORDER, WEAPON_ORDER, starterInv, RANKS, rankOf, MIS, CALLS, CONTACT_R, GRAB } from './data.js';
+import { ROOMS, B, route, roomAt, MISSION_ROOMS, T, WEAPONS, MIN_ACC, FREEZE_ROUND_CD, ITEMS, GEAR, GEAR_ORDER, WEAPON_ORDER, starterInv, BOOST_SHOTS, RANKS, rankOf, MIS, CALLS, CONTACT_R, GRAB } from './data.js';
 import { L, Lines, LINES } from './lines.js';
+import { odds, pickTarget } from './aim.js';
 
 export const G = {
   phase: 'start', paused: false, th: [], nid: 1, shield: 100, shOn: 0, cdShield: 0, scan: 0, power: true, dance: 0,
@@ -44,6 +45,7 @@ export function sanitizeInv(v) {
   for (const k in inv.ammo) inv.ammo[k] = clamp((v.ammo && v.ammo[k]) | 0, 0, 999);
   for (const k in inv.it) inv.it[k] = clamp((v.it && v.it[k]) | 0, 0, 99);
   for (const k of GEAR_ORDER) if (v.gear && v.gear[k]) inv.gear[k] = 1;
+  inv.boost = clamp(v.boost | 0, 0, 999);
   return inv;
 }
 export function dropPlayer(pid) { const P = G.players[pid]; if (P) { P.online = false; P.talk = false; } }
@@ -115,10 +117,9 @@ function bounce(t) { sfx('bonk'); t.at = false; const k = ROOMS.kitchen; t.x = k
 function shotAt(t) { if (t) t.grab = 0; G.lastShot = G.clock; }
 
 // ---------- weapons ----------
-export function accuracy(P, t, w) {
-  const W = WEAPONS[w || P.wpn]; const d = dist(posOf(P), t);
-  return clamp(W.acc - W.fall * d / 100 + (P.inv.gear.scope ? .12 : 0), MIN_ACC, .98);
-}
+// Hit chance: see aim.js. aim = the trooper's facing in map degrees, or null when not tracking.
+const shotCtx = (P, w, aim) => ({ pos: posOf(P), room: P.room, w: w || P.wpn, aim: typeof aim === 'number' ? aim : null, scope: !!P.inv.gear.scope });
+export function accuracy(P, t, w, aim) { return odds(Object.assign(shotCtx(P, w, aim), { t })).p; }
 const RIC = { handgun: ['ric_1', 'ric_2', 'ric_4'], striker: ['ric_1', 'ric_3', 'ric_4'], viper: ['ric_2', 'ric_4'], longshot: ['ric_3', 'ric_1'], laser: ['ric_laser'], cannon: ['ric_cannon'] };
 const HIT = { laser: 'hit_laser', cannon: 'hit_cannon' };
 export function fireCheck(P) {
@@ -130,7 +131,7 @@ export function fireCheck(P) {
   return 'ok';
 }
 export function fireSound(P) { return P.mode === 'freeze' && P.cdFrz <= 0 ? 'fire_freeze' : P.mode === 'bomb' && P.inv.it.bomb > 0 ? 'fire_bomb' : 'fire_' + P.wpn; }
-function fire(pid, id, wOverride) {
+function fire(pid, id, wOverride, aim) {
   const P = G.players[pid]; if (!P) return;
   // A recognized blaster can switch weapons; a loaded freeze/bomb round stays loaded if the new weapon takes it.
   if (wOverride && P.inv.w[wOverride] && WEAPONS[wOverride] && wOverride !== P.wpn) { P.wpn = wOverride; if (P.mode && !WEAPONS[wOverride].modes.includes(P.mode)) P.mode = null; }
@@ -140,24 +141,32 @@ function fire(pid, id, wOverride) {
   if (chk === 'empty') { sfx('empty', { to: pid }); say(L('out_of_ammo', { weapon: WEAPONS[P.wpn].n }), 2, 'ammo', 'oa' + pid, pid); P.wpn = 'handgun'; P.mode = null; return; }
   const W = WEAPONS[P.wpn]; P.cdFire = W.cd; G.lastShot = G.clock;
   if (W.ammo !== Infinity) P.inv.ammo[P.wpn]--;
-  if (P.wpn === 'laser') P.cdLaser = W.recharge;
+  if (P.wpn === 'laser') {
+    const b = P.inv.boost > 0; P.cdLaser = W.recharge * (b ? .5 : 1);
+    if (b && --P.inv.boost === 0) say(L('booster_empty'), 1, 'booster', 'bst' + pid, pid, { every: 2000 });
+  }
   let mode = P.mode;
   if (mode === 'freeze') { if (P.cdFrz > 0 || !W.modes.includes('freeze')) mode = null; else P.cdFrz = FREEZE_ROUND_CD; }
   if (mode === 'bomb') { if (!(P.inv.it.bomb > 0) || !W.modes.includes('bomb')) mode = null; else P.inv.it.bomb--; }
   P.mode = null;
   sfx(mode === 'freeze' ? 'fire_freeze' : mode === 'bomb' ? 'fire_bomb' : 'fire_' + P.wpn, { from: pid });
-  let t = G.th.find(x => x.id === id && canTarget(x, P)); if (!t) t = nearestTo(P);
-  if (!t) return;
+  const cands = G.th.filter(x => canTarget(x, P) && (x.id === id || (hostile(x) && !x.sl)));
+  const pk = pickTarget(cands, shotCtx(P, P.wpn, aim), id);
+  if (!pk) return;
+  const t = pk.t, o = pk.o;
   shotAt(t);
   if (mode === 'bomb') {
-    if (Math.random() <= Math.min(.98, accuracy(P, t) + .15)) explode(t.x, t.y, t, P, W, false);
+    if (Math.random() <= Math.min(.98, o.p + .15)) explode(t.x, t.y, t, P, W, false);
     else { const a = Math.random() * Math.PI * 2, r = 130 + Math.random() * 90; explode(t.x + Math.cos(a) * r, t.y + Math.sin(a) * r, null, P, W, true); }
     return;
   }
   if (T[t.k].dodge && t.fz <= 0 && mode !== 'freeze') { sfx('ric_dodge'); say(L('too_fast'), 1, 'sp', 'spfast'); return; }
-  if (Math.random() > accuracy(P, t)) {
-    sfx(mode === 'freeze' ? 'ric_freeze' : pick(RIC[P.wpn] || RIC.handgun));
-    if (mode === 'freeze') say(L('freeze_miss'), 0, 'freeze', 'frzmiss' + pid, pid); else if (Math.random() < .15) say(L('miss'), 0, P.wpn, 'miss' + pid, pid);
+  if (Math.random() > o.p) {
+    sfx(o.walls ? 'ric_wall' : mode === 'freeze' ? 'ric_freeze' : pick(RIC[P.wpn] || RIC.handgun));
+    // Say why, now and then: aiming, distance and walls are the lessons.
+    const why = o.walls ? 'shot_wall' : !o.inCone ? 'shot_aim' : !o.inRange ? 'shot_far' : null;
+    if (why) say(L(why), 1, why === 'shot_wall' ? 'barricade' : why === 'shot_aim' ? 'target' : P.wpn, 'why' + pid, pid, { every: 7000 });
+    else if (mode === 'freeze') say(L('freeze_miss'), 0, 'freeze', 'frzmiss' + pid, pid); else if (Math.random() < .15) say(L('miss'), 0, P.wpn, 'miss' + pid, pid);
     return;
   }
   hit(t, P, W, mode);
@@ -227,6 +236,10 @@ function useItem(pid, k, target) {
     case 'freezebomb': P.inv.it.freezebomb--; for (const t of G.th) { if (!hostile(t)) continue; t.fz = 6; t.grab = 0; if (T[t.k].armor) t.vul = 8; } sfx('freeze'); say(L('freeze_bomb'), 2, 'freezebomb'); break;
     case 'drone': P.inv.it.drone--; G.drone = 90; G.droneT = 0; sfx('robot'); say(L('drone_go'), 2, 'drone'); break;
     case 'turret': P.inv.it.turret--; G.turrets.push({ room: P.room, t: 30, cd: 0, owner: pid }); sfx('robot'); say(L('turret_go', { where: where(P.room) }), 2, 'turret'); break;
+    case 'booster':
+      if (!P.inv.w.laser) { say(L('booster_nolaser'), 1, 'booster', 'bnl' + pid, pid); return; }
+      P.inv.it.booster--; P.inv.boost = (P.inv.boost | 0) + BOOST_SHOTS; P.cdLaser = 0; sfx('booster', { to: pid }); say(L('booster_in', { shots: P.inv.boost }), 1, 'booster', null, pid);
+      if (P.wpn !== 'laser') { P.wpn = 'laser'; P.mode = null; } break;
     case 'bomb': if (!WEAPONS[P.wpn].modes.includes('bomb')) { say(L('bomb_fit'), 1, 'bomb', 'bfit' + pid, pid); return; } P.mode = P.mode === 'bomb' ? null : 'bomb'; return;
   }
 }
@@ -298,7 +311,7 @@ function completeMission(P) {
 function abortMission() { if (!G.mission) return; const gen = G.mission.k === 'gen'; G.mission = null; if (gen) G.power = true; say(L('mission_cancel'), 1, 'flag'); }
 
 // ---------- supply drops ----------
-const DROP_KINDS = [['ammo', 40], ['medkit', 20], ['bomb', 12], ['freezebomb', 12], ['weapon', 8], ['gear', 8]];
+const DROP_KINDS = [['ammo', 40], ['medkit', 20], ['bomb', 12], ['freezebomb', 12], ['weapon', 8], ['gear', 8], ['booster', 10]];
 function wpickArr(a) { let s = 0; for (const [, w] of a) s += w; let r = Math.random() * s; for (const [k, w] of a) { r -= w; if (r <= 0) return k; } return a[0][0]; }
 function supplyDrop(kind) {
   const rooms = MISSION_ROOMS.filter(r => !G.cfg.off.includes(r) && r !== 'master'); const room = pick(rooms.length ? rooms : ['living']);
@@ -505,8 +518,9 @@ export function tick(dt) {
 // Several phones can hear the same blaster. Shots heard within 130 ms of each other are treated
 // as one sound and only the phone that heard it loudest (the shooter's own phone) fires.
 let micGroup = null;
+const aimOf = a => (typeof a.h === 'number' && isFinite(a.h) ? ((a.h % 360) + 360) % 360 : null);
 function micShot(pid, a) {
-  if (!micGroup) { micGroup = []; setTimeout(() => { const g = micGroup; micGroup = null; const best = g.reduce((x, y) => (y.lv > x.lv ? y : x)); fire(best.pid, best.a.id, best.a.w); }, 130); }
+  if (!micGroup) { micGroup = []; setTimeout(() => { const g = micGroup; micGroup = null; const best = g.reduce((x, y) => (y.lv > x.lv ? y : x)); fire(best.pid, best.a.id, best.a.w, aimOf(best.a)); }, 130); }
   micGroup.push({ pid, a, lv: +a.mic || 0 });
 }
 
@@ -516,7 +530,7 @@ export function apply(a, pid) {
   if (!a || typeof a !== 'object') return;
   const P = G.players[pid];
   switch (a.a) {
-    case 'fire': if (typeof a.mic === 'number' && online().length > 1) micShot(pid, a); else fire(pid, a.id, a.w); break;
+    case 'fire': if (typeof a.mic === 'number' && online().length > 1) micShot(pid, a); else fire(pid, a.id, a.w, aimOf(a)); break;
     case 'mode': setMode(pid, a.m); break;
     case 'equip': equip(pid, a.w); break;
     case 'item': useItem(pid, a.k, a.t); break;

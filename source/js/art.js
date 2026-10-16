@@ -59,8 +59,28 @@ export const I = {
   minus: '<path d="M5 12h14"/>',
   home: '<path d="M3 11 12 4l9 7v9H3z"/><path d="M9 20v-6h6v6"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
-  upload: '<path d="M12 15V3M7 8l5-5 5 5M4 21h16"/>'
+  upload: '<path d="M12 15V3M7 8l5-5 5 5M4 21h16"/>',
+  power: '<path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0"/>',
+  zoomin: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5M10.5 7.5v6M7.5 10.5h6"/>',
+  house: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M12 20v-5"/>',
+  // room pictures for the radar (paths only, so they can be drawn on a canvas too)
+  r_bed: '<path d="M3 18V7M3 14h18v4M21 14v-3a3 3 0 0 0-3-3h-7v6M5 11a2 2 0 1 0 4 0a2 2 0 1 0-4 0"/>',
+  r_sofa: '<path d="M5 11V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3M2 13a2 2 0 0 1 4 0v2h12v-2a2 2 0 0 1 4 0v5H2zM5 18v2M19 18v2"/>',
+  r_pot: '<path d="M4 11h14v4a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4zM18 13h4M2 11h2M8 7c0-1.5 1.5-1.5 1.5-3M12.5 7c0-1.5 1.5-1.5 1.5-3"/>',
+  r_tub: '<path d="M3 12h18v2a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5zM6 12V6a2 2 0 0 1 4 0M7 19l-1 2M17 19l1 2"/>',
+  r_toy: '<path d="M4 13h7v7H4zM13 13h7v7h-7zM8.5 4h7v7h-7z"/>',
+  r_sun: '<path d="M8 12a4 4 0 1 0 8 0a4 4 0 1 0-8 0M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>',
+  r_door: '<path d="M6 21V3h12v18M3 21h18M14.5 12h.5"/>',
+  r_table: '<path d="M3 9h18M5 9v11M19 9v11M3 9l2-3h14l2 3"/>'
 };
+// Draw one of the line icons above on a canvas, centred at x, y, size px wide.
+const P2 = {};
+export function pict(c, n, x, y, size, color, lw = 2.2) {
+  if (!I[n] || typeof Path2D === 'undefined') return;
+  if (!P2[n]) P2[n] = [...I[n].matchAll(/ d="([^"]+)"/g)].map(m => new Path2D(m[1]));
+  c.save(); c.translate(x - size / 2, y - size / 2); c.scale(size / 24, size / 24);
+  c.lineWidth = lw; c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = color; for (const p of P2[n]) c.stroke(p); c.restore();
+}
 export const svg = (n, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n] || ''}</svg>`;
 
 // ---------- canvas helpers ----------
@@ -250,6 +270,9 @@ export function item(c, k, x, y, size) {
       for (const sx of [-1, 1]) { R(sx * 22 - 12, -2, 24, 28, 8); c.fillStyle = '#3a4049'; c.fill(); c.stroke(); circ(c, sx * 22, 20, 9); c.fillStyle = '#8dfc9e'; c.fill(); c.stroke(); } break;
     case 'ammo': R(-40, -18, 80, 46, 6); c.fillStyle = '#6f7f45'; c.fill(); c.stroke(); c.fillStyle = '#ffc83a';
       for (const xx of [-24, -8, 8, 24]) { R(xx - 5, -38, 10, 26, 4); c.fill(); c.stroke(); } c.fillStyle = ink; c.font = 'bold 18px sans-serif'; c.textAlign = 'center'; c.fillText('AMMO', 0, 14); break;
+    case 'booster': R(-22, -34, 44, 74, 9); c.fillStyle = '#2b2f36'; c.fill(); c.stroke(); R(-10, -44, 20, 12, 3); c.fillStyle = '#9aa3ab'; c.fill(); c.stroke();
+      R(-15, -26, 30, 58, 5); c.fillStyle = '#5ee6ff'; c.fill();
+      c.beginPath(); c.moveTo(4, -22); c.lineTo(-11, 4); c.lineTo(0, 4); c.lineTo(-5, 28); c.lineTo(12, -2); c.lineTo(1, -2); c.closePath(); c.fillStyle = '#ffc83a'; c.fill(); c.lineWidth = 3; c.stroke(); break;
     case 'crate': R(-40, -32, 80, 64, 4); c.fillStyle = '#b68a4a'; c.fill(); c.stroke(); c.beginPath(); c.moveTo(-40, -32); c.lineTo(40, 32); c.moveTo(40, -32); c.lineTo(-40, 32); c.stroke();
       c.fillStyle = '#ffc83a'; circ(c, 0, 0, 12); c.fill(); c.stroke(); break;
   }
@@ -283,7 +306,7 @@ function render(w, h, fn) { const cv = document.createElement('canvas'); cv.widt
 export function makeImages() {
   for (const k of ['z', 'h', 'tk', 'sp', 'iv', 'sl', 'dn', 'my', 'cat', 'rb']) IMG.m[k] = render(112, 112, c => head(c, k, 56, 62, k === 'h' ? 40 : 36));
   for (const k of ['handgun', 'striker', 'viper', 'longshot', 'laser', 'cannon']) IMG.w[k] = render(200, 100, c => weapon(c, k, 0, 2, 200));
-  for (const k of ['medkit', 'freezebomb', 'bomb', 'drone', 'turret', 'scope', 'vest', 'nvg', 'ammo', 'crate']) IMG.i[k] = render(112, 112, c => item(c, k, 56, 58, 100));
+  for (const k of ['medkit', 'freezebomb', 'bomb', 'booster', 'drone', 'turret', 'scope', 'vest', 'nvg', 'ammo', 'crate']) IMG.i[k] = render(112, 112, c => item(c, k, 56, 58, 100));
   for (let a = 0; a < 6; a++) for (let col = 0; col < 6; col++) IMG.a[a + '_' + col] = render(96, 96, c => avatar(c, a, col, 48, 52, 34));
 }
 export const avImg = (av, col) => IMG.a[(av | 0) + '_' + (col | 0)] || IMG.a['0_0'];
