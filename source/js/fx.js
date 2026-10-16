@@ -22,6 +22,10 @@ export const FX = {
   play(f) {
     if (!f || typeof f !== 'object') return;
     const me = App.myId();
+    // Whether or not this phone plays it, a nearby phone might: keep the blaster detector deaf to it.
+    if (App.mic && App.mic.on) {
+      if (typeof f.snd === 'string') App.mic.remoteSound(Snd.blockLen(f.snd, Snd.dur(f.snd)));
+    }
     if (f.to && f.to !== me) return;
     const personal = !!f.to, own = !!f.from && f.from === me;
     const audible = personal || (!own && speakerOn());

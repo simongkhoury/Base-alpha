@@ -1,14 +1,20 @@
 // Synthesized sound effects and the radio operator's voice.
 import { App, S } from './core.js';
+import { SFX } from './sfxdata.js';
 
 export const Snd = {
-  ctx: null, m: null, nbuf: null,
+  ctx: null, m: null, nbuf: null, buf: {}, eff: {}, boost: 2.2, dry: false,
   init() {
     if (this.ctx) { if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {}); return this.ctx; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
     try {
       this.ctx = new AC({ latencyHint: 'interactive' });
-      this.m = this.ctx.createGain(); this.m.gain.value = .8; this.m.connect(this.ctx.destination);
+      // master -> compressor -> make-up gain: everything loud, nothing clips
+      this.m = this.ctx.createGain(); this.m.gain.value = 1;
+      const comp = this.ctx.createDynamicsCompressor(); comp.threshold.value = -20; comp.knee.value = 10; comp.ratio.value = 5; comp.attack.value = .002; comp.release.value = .2;
+      const out = this.ctx.createGain(); out.gain.value = 1.8;
+      this.m.connect(comp); comp.connect(out); out.connect(this.ctx.destination);
+      this.loadSamples();
       const b = this.ctx.createBuffer(1, 1, 22050), s = this.ctx.createBufferSource(); s.buffer = b; s.connect(this.m); s.start(0);
       const n = this.ctx.sampleRate * 2; this.nbuf = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
       const a = this.nbuf.getChannelData(0); for (let i = 0; i < n; i++) a[i] = Math.random() * 2 - 1;
@@ -16,12 +22,20 @@ export const Snd = {
     return this.ctx;
   },
   tone(f, d, type = 'sine', v = .2, t = 0, f2) {
+    if (this.dry) return; v *= this.boost;
     const c = this.ctx, o = c.createOscillator(), g = c.createGain(), st = c.currentTime + t;
     o.type = type; o.frequency.setValueAtTime(f, st); if (f2) o.frequency.exponentialRampToValueAtTime(f2, st + d);
     g.gain.setValueAtTime(.0001, st); g.gain.exponentialRampToValueAtTime(v, st + .008); g.gain.exponentialRampToValueAtTime(.0001, st + d);
     o.connect(g); g.connect(this.m); o.start(st); o.stop(st + d + .03);
   },
+  // Gentle tone with a slow attack: radar pings the blaster detector cannot mistake for a snap.
+  soft(f, d, v, t = 0) {
+    if (this.dry) return; v *= this.boost; const c = this.ctx, o = c.createOscillator(), g = c.createGain(), st = c.currentTime + t;
+    o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(v, st + .045); g.gain.linearRampToValueAtTime(0, st + d);
+    o.connect(g); g.connect(this.m); o.start(st); o.stop(st + d + .02);
+  },
   noise(d, v = .15, t = 0, fq = 1200, q = .7, type = 'bandpass', fq2) {
+    if (this.dry) return; v *= this.boost;
     const c = this.ctx, s = c.createBufferSource(); s.buffer = this.nbuf;
     const fl = c.createBiquadFilter(); fl.type = type; const st = c.currentTime + t;
     fl.frequency.setValueAtTime(fq, st); if (fq2) fl.frequency.exponentialRampToValueAtTime(fq2, st + d); fl.Q.value = q;
@@ -30,6 +44,7 @@ export const Snd = {
   },
   // Cartoon monster voice: buzzy tone through two vowel filters with a wobble.
   groan(f, d, v = .12, t = 0, f2, vow = [520, 900], wob = 6) {
+    if (this.dry) return; v *= this.boost * 1.5;
     const c = this.ctx, st = c.currentTime + t, o = c.createOscillator(); o.type = 'sawtooth';
     o.frequency.setValueAtTime(f, st); if (f2) o.frequency.exponentialRampToValueAtTime(f2, st + d);
     const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = wob; lg.gain.value = f * .06; lfo.connect(lg); lg.connect(o.frequency);
@@ -38,8 +53,41 @@ export const Snd = {
     out.connect(this.m); o.start(st); lfo.start(st); o.stop(st + d + .05); lfo.stop(st + d + .05);
   },
   // Plays a named sound. Returns its rough length so the shot detector can ignore it.
-  play(n) {
+  loadSamples() {
+    for (const [k, b64] of Object.entries(SFX)) {
+      try {
+        const bin = atob(b64), ab = new ArrayBuffer(bin.length), u = new Uint8Array(ab); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+        this.ctx.decodeAudioData(ab, b => { this.buf[k] = b; this.eff[k] = effLen(b); }, () => {});
+      } catch (e) {}
+    }
+  },
+  sample(n, vol = 1, rate = 1) {
+    const c = this.ctx, b = this.buf[n]; if (!b) return 0;
+    const s = c.createBufferSource(); s.buffer = b; s.playbackRate.value = rate; const g = c.createGain(); g.gain.value = vol;
+    s.connect(g); g.connect(this.m); s.start(); return (this.eff[n] || b.duration) / rate;
+  },
+  // How long a sound can still produce snap-like transients. Most only snap at the start;
+  // explosions and debris keep crackling.
+  blockLen(n, d) { return /^(explode|ric_cannon|chopper|dance|fire_cannon)/.test(n) ? d : Math.min(d, .35); },
+  // Rough audible length of a sound (seconds), used to keep the blaster detector from hearing the game.
+  dur(n) {
+    if (this.eff[n]) return this.eff[n];
+    if (!this.ctx) return .4;
+    this.dry = true; let d = .4; try { d = this.synth(n) || .4; } catch (e) {} this.dry = false; return d;
+  },
+  play(n, opt) {
     if (!this.ctx || !S.sound || !n) return 0;
+    if (n === 'hurt_z' && Math.random() < .5) n = 'hurt_z2';
+    let d = 0;
+    if (this.buf[n]) {
+      const vary = /^(hurt|die|ric|fire_(handgun|striker|viper))/.test(n) ? .94 + Math.random() * .12 : 1;
+      d = this.sample(n, 1, vary);
+    } else d = this.synth(n);
+    if (d && App.mic && !(opt && opt.soft)) App.mic.ownSound(this.blockLen(n, d));
+    return d;
+  },
+  synth(n) {
+    if (!this.ctx) return 0;
     let d = .3;
     try {
       const T = this.tone.bind(this), N = this.noise.bind(this), Gr = this.groan.bind(this), r = Math.random;
@@ -69,6 +117,10 @@ export const Snd = {
         case 'hit_laser': N(.2, .15, 0, 4000, 2); T(1400, .15, 'sawtooth', .05, 0, 300); d = .22; break;
         case 'hit_cannon': N(.25, .35, 0, 500, .8, 'lowpass'); T(110, .25, 'sine', .18, 0, 50); d = .3; break;
         case 'hit_armor': T(2400, .06, 'square', .07); T(1800, .14, 'square', .05, .03); N(.06, .1, 0, 5000, 3); d = .2; break;
+        case 'hit_freeze': T(3000, .3, 'sine', .07, 0, 1200); N(.2, .2, 0, 6000, 2); d = .4; break;
+        case 'ric_freeze': N(.4, .12, 0, 1500, 1, 'bandpass', 5000); T(4200, .2, 'sine', .04, .2); d = .5; break;
+        case 'explode_far': N(.8, .3, 0, 300, .5, 'lowpass', 80); T(60, .5, 'sine', .15, 0, 30); d = .8; break;
+        case 'hurt_z2': Gr(130, .35, .12, 0, 170); d = .4; break;
         case 'explode': N(.8, .5, 0, 800, .5, 'lowpass', 90); T(70, .6, 'sine', .3, 0, 30); N(.3, .15, .05, 2500, 1); d = .8; break;
         // --- monster hurt ---
         case 'hurt_z': Gr(140 + r() * 30, .35, .12, 0, 110); d = .4; break;
@@ -88,7 +140,10 @@ export const Snd = {
         case 'die_dn': [523, 659, 784, 1047].forEach((f, i) => T(f, .12, 'square', .05, i * .08)); d = .5; break;
         case 'die_my': T(500, .2, 'triangle', .08, 0, 150); d = .25; break;
         // --- radar, base and game ---
-        case 'pip': T(1250, .09, 'sine', .09); d = .1; break;
+        case 'pip': T(1250, .12, 'sine', .07); d = .12; break;
+        case 'ping_soft': this.soft(1250, .16, .06); d = .16; break;
+        case 'ping_mut': this.soft(520, .14, .08); this.soft(520, .14, .08, .17); d = .3; break;
+        case 'ping_low': this.soft(170, .4, .08); d = .4; break;
         case 'pulse': T(520, .1, 'triangle', .12); T(520, .1, 'triangle', .12, .16); d = .3; break;
         case 'low': T(150, .45, 'sawtooth', .06, 0, 105); N(.4, .05, 0, 300, 1, 'lowpass'); d = .45; break;
         case 'horde': Gr(130, .6, .08, 0, 100); Gr(160, .6, .07, .1, 120); Gr(110, .6, .07, .2, 90); d = .8; break;
@@ -124,10 +179,11 @@ export const Snd = {
         default: d = 0;
       }
     } catch (e) { d = 0; }
-    if (d && App.mic) App.mic.quiet(d + .08);
     return d;
   }
 };
+// Length until the sound fades below 4% of its peak (ignores the quiet reverb tail).
+function effLen(b) { const a = b.getChannelData(0); let pk = 0; for (let i = 0; i < a.length; i++) { const v = Math.abs(a[i]); if (v > pk) pk = v; } const th = pk * .04; let last = 0; for (let i = a.length - 1; i >= 0; i--) if (Math.abs(a[i]) > th) { last = i; break; } return last / b.sampleRate; }
 
 export const Voice = {
   v: null, speaking: false,
@@ -149,7 +205,6 @@ export const Voice = {
         u.rate = 1; u.pitch = .95;
         u.onstart = () => { this.speaking = true; App.mic && App.mic.hold(true); };
         u.onend = u.onerror = () => { this.speaking = false; App.mic && App.mic.hold(false); };
-        if (App.mic) App.mic.quiet(Math.min(8, .5 + t.length * .07));
         speechSynthesis.speak(u);
       } catch (e) {}
     }, 300);

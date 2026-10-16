@@ -26,10 +26,10 @@ class Onset extends AudioWorkletProcessor {
       if (this.cap >= this.capLen) {
         const L = this.capLen + this.pre, out = new Float32Array(L), s = (this.w - L + this.N * 2) % this.N;
         for (let i = 0; i < L; i++) out[i] = this.buf[(s + i) % this.N];
-        this.port.postMessage({ seg: out }, [out.buffer]); this.cap = -1; this.hold = Math.floor(sampleRate * 0.12);
+        this.port.postMessage({ seg: out, t: this.onT }, [out.buffer]); this.cap = -1; this.hold = Math.floor(sampleRate * 0.12);
       }
     } else if (this.hold > 0) { this.hold -= n; }
-    else if (e > this.floor * this.thr && e > 3e-6 && e > this.prev * 4) { this.cap = 0; }
+    else if (e > this.floor * this.thr && e > 3e-6 && e > this.prev * 4) { this.cap = 0; this.onT = currentTime; }
     if (this.cap < 0) { this.floor = e < this.floor ? this.floor * 0.8 + e * 0.2 : this.floor * 0.998 + e * 0.002; if (this.floor < 1e-7) this.floor = 1e-7; }
     this.prev = e < 1e-7 ? 1e-7 : e;
     return true;
@@ -87,7 +87,7 @@ export function similarity(f, g) { return (cos(f.a, g.a) * 1 + cos(f.b, g.b) * .
 // ---------- the detector ----------
 export const Mic = {
   ctx: null, stream: null, src: null, node: null, on: false, level: 0, floor: 1e-6, thr: 12,
-  quietUntil: 0, ptt: false, rec: null, last: null, err: '',
+  quietUntil: 0, speechUntil: 0, pauseUntil: 0, blocks: [], recent: [], ptt: false, rec: null, last: null, err: '',
   sig: load('ba2.sig', {}), // { key: [features, ...] }  keys: 'one' or a weapon id
   async enable() {
     this.err = '';
@@ -113,16 +113,26 @@ export const Mic = {
   applySens() { this.thr = 3 + (1 - S.sens) * 37; if (this.node) this.node.port.postMessage({ thr: this.thr }); },
   quiet(sec) { this.quietUntil = Math.max(this.quietUntil, performance.now() + sec * 1000); },
   hold() {},
-  muted() { return performance.now() < this.quietUntil || App.voice.speaking || this.ptt || (App.net && App.net.someoneTalking()); },
+  // Game sounds must never be heard as shots. Each sound blocks a time window (audio clock).
+  block(t0, t1) { const now = this.ctx ? this.ctx.currentTime : 0; this.blocks = this.blocks.filter(b => b[1] > now - 1); this.blocks.push([t0, t1]); },
+  latency() { const c = App.snd.ctx; return c ? (c.outputLatency || 0) + (c.baseLatency || 0) + 0.06 : 0.1; },
+  // This phone is about to play a sound lasting d seconds.
+  ownSound(d) { const c = App.snd.ctx; if (!c) return; const t = c.currentTime; this.block(t - 0.02, t + this.latency() + d + 0.1); },
+  // Another phone is playing a sound right about now (we only learn of it over the network).
+  remoteSound(d) { const c = App.snd.ctx; if (!c) return; const t = c.currentTime; this.block(t - 0.3, t + d + 0.2); },
+  speech(sec) { this.speechUntil = Math.max(this.speechUntil, performance.now() + sec * 1000); },
+  blocked(t) { return t != null && this.blocks.some(b => t >= b[0] && t <= b[1]); },
+  muted() { const now = performance.now(); return now < this.quietUntil || now < this.pauseUntil || App.voice.speaking || (S.shotMode === 'snap' && now < this.speechUntil) || this.ptt || (App.net && App.net.someoneTalking()); },
   onMsg(d) {
     if (!d) return;
     if (d.level != null) { this.level = d.level; this.floor = d.floor; return; }
     if (!d.seg) return;
-    if (this.muted()) return;
+    if (this.muted() || this.blocked(d.t)) return;
     const f = features(d.seg, this.ctx.sampleRate); if (!f) return;
     if (this.rec) { this.addSample(f); return; }
     let pk = 0; for (let i = 0; i < d.seg.length; i++) { const v = Math.abs(d.seg[i]); if (v > pk) pk = v; }
-    this.classify(f, pk);
+    // Wait a moment in case another phone's "I just played a sound" message is still on its way.
+    setTimeout(() => { if (!this.blocked(d.t) && !this.muted()) this.classify(f, pk); }, 80);
   },
   // ----- recording -----
   startRec(key, onUpdate) { this.rec = { key, got: [], onUpdate }; },
@@ -153,7 +163,12 @@ export const Mic = {
         res = { ok: sc >= S.strict && sc - second >= .015, w, score: sc, second: scores[1] ? scores[1][0] : null }; }
     }
     res.t = now; this.last = res;
-    if (res.ok && App.ui) App.ui.onShot(res.w, pk);
+    if (res.ok && !this.rec) {
+      // Safety net: a burst of "shots" with nobody shooting means the phone is hearing itself.
+      this.recent = this.recent.filter(x => now - x < 2500); this.recent.push(now);
+      if (this.recent.length >= 7) { this.recent = []; this.pauseUntil = now + 4000; App.ui && App.ui.toast('Microphone paused for a moment: it kept hearing shots by itself. Try lower sensitivity.'); return; }
+      App.ui && App.ui.onShot(res.w, pk);
+    }
     App.ui && App.ui.onDetect && App.ui.onDetect(res);
   }
 };

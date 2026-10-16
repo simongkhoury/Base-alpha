@@ -130,7 +130,8 @@ export function fireCheck(P) {
 export function fireSound(P) { return P.mode === 'freeze' && P.cdFrz <= 0 ? 'fire_freeze' : P.mode === 'bomb' && P.inv.it.bomb > 0 ? 'fire_bomb' : 'fire_' + P.wpn; }
 function fire(pid, id, wOverride) {
   const P = G.players[pid]; if (!P) return;
-  if (wOverride && P.inv.w[wOverride] && WEAPONS[wOverride] && wOverride !== P.wpn) { P.wpn = wOverride; P.mode = null; }
+  // A recognized blaster can switch weapons; a loaded freeze/bomb round stays loaded if the new weapon takes it.
+  if (wOverride && P.inv.w[wOverride] && WEAPONS[wOverride] && wOverride !== P.wpn) { P.wpn = wOverride; if (P.mode && !WEAPONS[wOverride].modes.includes(P.mode)) P.mode = null; }
   const chk = fireCheck(P);
   if (chk === 'no' || chk === 'cool') return;
   if (chk === 'laser') { sfx('laser_deny', { to: pid }); say('Laser not recharged!', 1, 'laser', 'ld' + pid, pid); return; }
@@ -145,9 +146,13 @@ function fire(pid, id, wOverride) {
   sfx(mode === 'freeze' ? 'fire_freeze' : mode === 'bomb' ? 'fire_bomb' : 'fire_' + P.wpn, { from: pid });
   let t = G.th.find(x => x.id === id && canTarget(x, P)); if (!t) t = nearestTo(P);
   if (!t) return;
-  if (mode === 'bomb') { explode(t, P, W); return; }
+  if (mode === 'bomb') {
+    if (Math.random() <= Math.min(.98, accuracy(P, t) + .15)) explode(t.x, t.y, t, P, W, false);
+    else { const a = Math.random() * Math.PI * 2, r = 130 + Math.random() * 90; explode(t.x + Math.cos(a) * r, t.y + Math.sin(a) * r, null, P, W, true); }
+    return;
+  }
   if (T[t.k].dodge && t.fz <= 0 && mode !== 'freeze') { sfx('ric_dodge'); say('Too fast! Freeze it first!', 1, 'sp', 'spfast'); return; }
-  if (Math.random() > accuracy(P, t)) { sfx(pick(RIC[P.wpn] || RIC.handgun)); if (Math.random() < .15) say(pick(['Missed! Get closer!', 'Close one!', 'Missed!']), 0, P.wpn, 'miss' + pid, pid); return; }
+  if (Math.random() > accuracy(P, t)) { sfx(mode === 'freeze' ? 'ric_freeze' : pick(RIC[P.wpn] || RIC.handgun)); if (mode === 'freeze') say('Freeze round missed!', 0, 'freeze', 'frzmiss' + pid, pid); if (Math.random() < .15) say(pick(['Missed! Get closer!', 'Close one!', 'Missed!']), 0, P.wpn, 'miss' + pid, pid); return; }
   hit(t, P, W, mode);
 }
 function hit(t, P, W, mode) {
@@ -158,15 +163,14 @@ function hit(t, P, W, mode) {
     case 'my': reveal(t); return;
     case 'sl': if (t.sl) { t.sl = false; t.goal = null; t.path = route(t.room, 'base'); t.pi = 0; sfx('roar'); say('Uh oh! You woke up the sleepy giant! Here it comes!', 2, 'sl'); } break;
   }
-  if (mode === 'freeze') { t.fz = 6; if (T[t.k].armor) t.vul = 8; sfx('freeze'); }
+  if (mode === 'freeze') { t.fz = 6; if (T[t.k].armor) t.vul = 8; sfx('hit_freeze'); say(T[t.k].armor ? 'Frozen! The armor cracked. Fire now!' : 'Frozen solid!', 1, 'freeze', 'frzhit'); }
   if (T[t.k].armor && t.vul <= 0) { sfx('hit_armor'); say('Armor too strong! Use a freeze round or a bomb round!', 1, 'tk', 'tkarm'); return; }
-  sfx(HIT[P.wpn] || 'hit_bullet');
+  if (mode !== 'freeze') sfx(HIT[P.wpn] || 'hit_bullet');
   t.hp -= W.dmg;
   if (t.hp <= 0) defeat(t, P); else sfx('hurt_' + t.k);
 }
-function explode(t, P, W) {
-  sfx('explode'); say('Boom! Bomb round!', 0, 'bomb', 'boom');
-  const cx = t.x, cy = t.y;
+function explode(cx, cy, t, P, W, far) {
+  sfx(far ? 'explode_far' : 'explode'); say(far ? 'Bomb round missed, but it still went boom!' : 'Boom! Direct hit!', 0, 'bomb', 'boom');
   for (const m of G.th.slice()) {
     if (Math.hypot(m.x - cx, m.y - cy) > 170 || !hostile(m)) continue;
     if (m.k === 'dn' || m.k === 'my') { if (m.k === 'my') reveal(m); continue; }

@@ -46,7 +46,7 @@ const holdAct = w => () => act({ a: 'hold', w });
 function doFire(w, mic) {
   const P = me(); if (!P) return;
   const W = w && P.inv.w[w] ? w : P.wpn;
-  const probe = Object.assign({}, P, { wpn: W, mode: W !== P.wpn ? null : P.mode });
+  const probe = Object.assign({}, P, { wpn: W, mode: P.mode && WEAPONS[W].modes.includes(P.mode) ? P.mode : null });
   const chk = fireCheck(probe);
   if (chk === 'ok') { Snd.play(fireSound(probe)); if (!Net.isHost()) P.cdFire = WEAPONS[W].cd; flashFire(); }
   act({ a: 'fire', id: sel, w: W !== P.wpn ? W : undefined, mic: typeof mic === 'number' ? +mic.toFixed(4) : undefined });
@@ -207,7 +207,7 @@ function drawRadar(dt) {
     for (let i = 0; i < 28; i++) { c.beginPath(); c.moveTo(cx, cy); c.arc(cx, cy, R, sweep - (i + 1) * .04, sweep - i * .04); c.closePath(); c.fillStyle = `rgba(141,252,158,${.2 * (1 - i / 28)})`; c.fill(); }
     c.strokeStyle = 'rgba(141,252,158,.9)'; c.lineWidth = 2 * dpr; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(sweep) * R, cy + Math.sin(sweep) * R); c.stroke();
     if (live && !G.paused && tnow - lastPing > .7) for (const t of G.th) { if (!canTarget(t, me())) continue; const [x, y] = P(t.x, t.y); const a = Math.atan2(y - cy, x - cx);
-      if (angDiff(sweep, a) < angDiff(sweep, prev) + .0001) { lastPing = tnow; Snd.play(T[t.k].mut ? 'pulse' : t.k === 'h' ? 'low' : t.k === 'cat' ? 'tick' : 'pip'); break; } }
+      if (angDiff(sweep, a) < angDiff(sweep, prev) + .0001) { lastPing = tnow; Snd.play(T[t.k].mut ? 'ping_mut' : t.k === 'h' ? 'ping_low' : 'ping_soft', { soft: true }); break; } }
   } else if (G.phase === 'night') { sweep = (sweep + dt * TAU / 9) % TAU; c.strokeStyle = 'rgba(141,252,158,.35)'; c.lineWidth = 2 * dpr; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(sweep) * R, cy + Math.sin(sweep) * R); c.stroke(); }
   if (G.scan > 0) for (let i = 0; i < 3; i++) { const p = ((tnow * .8) + i / 3) % 1; circ(c, cx, cy, R * p); c.strokeStyle = `rgba(94,230,255,${.5 * (1 - p)})`; c.lineWidth = 3 * dpr; c.stroke(); }
   if (G.dance > 0) { const cols = ['#ff70b8', '#ffc83a', '#8dfc9e', '#86dcff', '#b98cff']; for (let i = 0; i < 5; i++) { const p = ((tnow * 1.2) + i / 5) % 1; circ(c, cx, cy, R * p); c.strokeStyle = cols[i]; c.globalAlpha = .6 * (1 - p); c.lineWidth = 6 * dpr; c.stroke(); } c.globalAlpha = 1; }
