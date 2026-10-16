@@ -38,6 +38,21 @@ export const SHAPES = {
   base: [[500, 1110], [600, 1110], [598, 1226], [500, 1230]]
 };
 export const SPOTS = ['couch', 'nook1', 'nook2', 'dining'];
+// Which room a map point (x, y) is in. Spots win inside the living room; the front door is a small zone.
+function inPoly(x, y, pts) { let ins = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) ins = !ins; } return ins; }
+export function roomAt(x, y) {
+  if (Math.hypot(x - 578, y - 845) < 55) return 'frontdoor';
+  for (const s of SPOTS) if (Math.hypot(x - ROOMS[s].x, y - ROOMS[s].y) < 70) return s;
+  for (const id in SHAPES) if (inPoly(x, y, SHAPES[id])) return id;
+  return null;
+}
+// Area a room belongs to for wall checks (spots and the door are open to their room).
+export const AREA = r => (SPOTS.includes(r) ? 'living' : r === 'frontdoor' ? 'kitchen' : r);
+const AREA_ADJ = { balcony: ['living'], living: ['balcony', 'kitchen'], kitchen: ['living', 'hall'], hall: ['kitchen', 'bath', 'master', 'toy', 'base'], bath: ['hall'], master: ['hall'], toy: ['hall'], base: ['hall'] };
+export const areasTouch = (a, b) => a === b || (AREA_ADJ[a] || []).includes(b);
+// Monster contact: how close counts as "next to you", and seconds before a grab.
+export const CONTACT_R = 140;
+export const GRAB = { z: 6, h: 5, tk: 8, sp: 4, iv: 6, sl: 7, dn: 9 };
 export const MISSION_ROOMS = ['balcony', 'living', 'couch', 'nook1', 'nook2', 'dining', 'kitchen', 'hall', 'bath', 'toy', 'master'];
 export const SPAWN_ROOMS = ['balcony', 'frontdoor', 'living', 'couch', 'nook1', 'nook2', 'dining', 'kitchen', 'hall', 'bath', 'toy', 'master'];
 export const PLACE_ROOMS = ['base', 'hall', 'toy', 'bath', 'master', 'kitchen', 'frontdoor', 'dining', 'living', 'couch', 'nook1', 'nook2', 'balcony'];

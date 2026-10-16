@@ -202,7 +202,7 @@ export const Voice = {
         if (speechSynthesis.speaking && speechSynthesis.pending) speechSynthesis.cancel();
         if (!this.v) this.pick();
         const u = new SpeechSynthesisUtterance(t); if (this.v) { u.voice = this.v; u.lang = this.v.lang; } else u.lang = 'en-US';
-        u.rate = 1; u.pitch = .95;
+        u.rate = 1.06; u.pitch = 1;
         u.onstart = () => { this.speaking = true; App.mic && App.mic.hold(true); };
         u.onend = u.onerror = () => { this.speaking = false; App.mic && App.mic.hold(false); };
         speechSynthesis.speak(u);

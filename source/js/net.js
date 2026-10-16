@@ -43,7 +43,7 @@ export const Net = {
   },
   lost(c) {
     const e = this.conns.get(c.peer); if (!e) return; this.conns.delete(c.peer);
-    if (e.pid) { const P = App.game.G.players[e.pid]; App.game.dropPlayer(e.pid); if (P) App.game.say(`${P.name}'s phone lost the link.`, 1, 'link'); }
+    if (e.pid) { const P = App.game.G.players[e.pid]; App.game.dropPlayer(e.pid); if (P) App.game.say(App.game.L('link_lost', { name: P.name }), 1, 'link'); }
     this.endCall(c.peer);
   },
   onHostData(c, d) {
@@ -52,7 +52,7 @@ export const Net = {
       const pid = d.p.id.slice(0, 24); e.pid = pid;
       const wasOnline = App.game.G.players[pid] && App.game.G.players[pid].online;
       const P = App.game.addPlayer({ id: pid, name: d.p.name, color: d.p.color, av: d.p.av }, c.peer);
-      if (!wasOnline) { App.game.sfx('radio_on'); App.game.say(`${P.name} joined Base Alpha.`, 2, 'users'); }
+      if (!wasOnline) { App.game.sfx('radio_on'); App.game.say(App.game.L('joined', { name: P.name }), 2, 'users'); }
       this.sendState();
     } else if (d.t === 'act' && e.pid) App.game.apply(d.a, e.pid);
   },

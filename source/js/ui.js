@@ -1,6 +1,9 @@
 // Everything on screen: header, pad, context button, radar, map, overlays and sheets.
 import { App, S, saveS, ME, saveMe, $, $$, clamp, esc, TAU } from './core.js';
-import { ROOMS, B, SHAPES, SPOTS, PLACE_ROOMS, MISSION_ROOMS, SPAWN_ROOMS, T, MONSTER_MENU, WEAPONS, WEAPON_ORDER, ITEMS, ITEM_ORDER, GEAR, GEAR_ORDER, RANKS, rankOf, MIS, EVENTS, LINES, CALLS, COLORS, AVATARS, FREEZE_ROUND_CD } from './data.js';
+import { ROOMS, B, SHAPES, roomAt, PLACE_ROOMS, MISSION_ROOMS, SPAWN_ROOMS, T, MONSTER_MENU, WEAPONS, WEAPON_ORDER, ITEMS, ITEM_ORDER, GEAR, GEAR_ORDER, RANKS, rankOf, MIS, EVENTS, LINES, CALLS, COLORS, AVATARS, FREEZE_ROUND_CD, GRAB } from './data.js';
+import { LINES as VOICE, LINE_CATS, Lines, L } from './lines.js';
+import { Track } from './track.js';
+import { Scope } from './scope.js';
 import { svg, IMG, avImg, icHTML, head, heli, item as drawItem, avatar as drawAvatar, circ } from './art.js';
 import { G, fireCheck, fireSound, accuracy, canTarget } from './game.js';
 import { Snd, Voice } from './audio.js';
@@ -12,7 +15,7 @@ const me = () => G.players[ME.id];
 const act = a => Net.act(a);
 const onlinePlayers = () => Object.values(G.players).filter(p => p.online);
 let sel = null;          // targeted monster id (this phone)
-let sheetKind = null, tab = null, spawnK = null, delay = 0, armed = null;
+let sheetKind = null, tab = null, spawnK = null, delay = 0, armed = null, vcat = 'monsters';
 let started = false, wl = null;
 
 // ---------- ticker, toast ----------
@@ -27,7 +30,7 @@ function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = fals
 async function wakeLock() { try { if ('wakeLock' in navigator && document.visibilityState === 'visible') wl = await navigator.wakeLock.request('screen'); } catch (e) {} }
 export function unlock() {
   Snd.init(); Net.audioReady(); Net.unlockAudio();
-  if (!started) { started = true; Voice.prime(); wakeLock(); if (S.micOn && !Mic.on) Mic.enable().catch(() => {}); }
+  if (!started) { started = true; Voice.prime(); wakeLock(); if (S.micOn && !Mic.on) Mic.enable().catch(() => {}); if (S.trackOn && !Track.on) Track.enable().catch(() => {}); if (S.scopeOn && !Scope.on) Scope.enable().catch(() => {}); }
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && started) { wakeLock(); Snd.init(); } });
 document.addEventListener('pointerdown', () => { if (!Snd.ctx || Snd.ctx.state !== 'running') unlock(); }, { capture: true });
@@ -79,7 +82,7 @@ function ctxAction() {
   if (m && m.step === 2 && P.room !== 'base') return { ic: 'bed', t: 'AT BASE', s: 'Tap when back', a: { a: 'step' }, cls: 'go' };
   if (G.drops.length) { const d = G.drops[0]; return { ic: 'crate', t: `CRATE: ${ROOMS[d.room].n.toUpperCase()}`, s: `${Math.ceil(d.t)}s left`, a: { a: 'pickup', id: d.id }, cls: 'go' }; }
   const W = WEAPONS[P.wpn]; if (W.ammo !== Infinity && !(P.inv.ammo[P.wpn] > 0)) return { ic: 'swap', t: 'SWITCH WEAPON', open: 'inv', cls: 'warn' };
-  if (P.room === 'base' && G.shield < 100 && !G.th.some(t => t.at)) return { ic: 'wrench', t: 'REPAIR', s: 'Hold', hold: 'repair', prog: G.shield / 100 };
+  if (P.room === 'base' && G.shield < 100 && !G.th.some(t => t.at)) return { ic: 'wrench', t: 'REPAIR', s: G.cov ? 'Hold' : 'Needs cover fire', hold: 'repair', prog: G.shield / 100, cls: G.cov ? '' : 'warn' };
   return { ic: 'scan', t: G.scan > 0 ? 'SCANNING' : 'SCAN', a: { a: 'scan' }, cls: G.scan > 0 ? 'dim' : '' };
 }
 let ctxNow = null, ctxSig = '';
@@ -149,6 +152,7 @@ function buildHeader() {
 export function setView(v) {
   S.view = v; saveS(); $('#dock').hidden = v !== 'dock'; $('#field').hidden = v !== 'field';
   const home = v === 'dock' ? $('#dockSide') : $('#fieldSide'); home.appendChild($('#statusRow')); home.appendChild($('#pad'));
+  (v === 'dock' ? $('#radarWrap') : $('#mapWrap')).appendChild($('#scope')); (v === 'dock' ? $('#radarWrap') : $('#mapWrap')).appendChild($('#moveFab'));
   $('#modeBtn').innerHTML = svg(v === 'dock' ? 'map' : 'radar'); $('#modeBtn').setAttribute('aria-label', v === 'dock' ? 'Switch to the map' : 'Switch to the radar');
 }
 
@@ -219,8 +223,8 @@ function drawRadar(dt) {
   if (G.power) { const base = Math.max(14 * dpr, R * .075);
     for (const t of G.th) { const [x, y] = P(t.x, t.y), r = threatR(t.k, base); const a = Math.atan2(y - cy, x - cx); const since = angDiff(sweep, a) / TAU; drawThreat(c, t, x, y, r, dpr, .6 + .4 * Math.pow(1 - since, 2)); hits.push({ id: t.id, x, y, r: r * 1.5 }); } }
   // players
-  const groups = {}; for (const Q of onlinePlayers()) (groups[Q.room] = groups[Q.room] || []).push(Q);
-  for (const room in groups) { const r0 = ROOMS[room]; if (!r0 || room === 'base') continue; const [x, y] = P(r0.x, r0.y); groups[room].forEach((Q, i) => playerDot(c, Q, x + (i - (groups[room].length - 1) / 2) * 18 * dpr, y + 16 * dpr, 8 * dpr, dpr, Q.id === ME.id)); }
+  const nearBase = [];
+  for (const Q of onlinePlayers()) { const q = ppos(Q); if (Math.hypot(q.x - B.x, q.y - B.y) < 70) { nearBase.push(Q); continue; } const [x, y] = P(q.x, q.y); playerDot(c, Q, x, y, 8 * dpr, dpr, Q.id === ME.id); grabRing(c, Q, x, y, 15 * dpr, dpr); }
   if (G.chopper > 0) { const [bx, by] = P(ROOMS.balcony.x, ROOMS.balcony.y), ex = cx + (bx - cx) * 1.6, ey = cy + (by - cy) * 1.6, p = Math.min(1, G.chopper * 1.3); heli(c, ex + (bx - ex) * p, ey + (by - ey) * p, Math.max(18 * dpr, R * .09), tnow); }
   if (G.robot > 0) { const a = tnow * 2, rr = R * .26; head(c, 'rb', cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, Math.max(12 * dpr, R * .06)); }
   if (G.drone > 0) { const a = -tnow * .7, rr = R * .6; drawItem(c, 'drone', cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, Math.max(22 * dpr, R * .1)); }
@@ -234,17 +238,13 @@ function drawRadar(dt) {
   c.beginPath(); c.arc(cx, cy, br * 1.45, -Math.PI / 2, -Math.PI / 2 + TAU * G.shield / 100); c.strokeStyle = G.shield < 30 ? '#ff6a3d' : G.shield < 60 ? '#ffc83a' : '#5ee6ff'; c.stroke();
   circ(c, cx, cy, br); c.fillStyle = '#ffc83a'; c.fill(); c.lineWidth = 3 * dpr; c.strokeStyle = '#5a430a'; c.stroke();
   c.fillStyle = '#0c100a'; c.font = `${Math.round(br * 1.15)}px "Black Ops One", Impact, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('A', cx, cy + br * .06);
-  const atBase = (groups.base || []); atBase.forEach((Q, i) => { const a = -Math.PI / 2 + (i - (atBase.length - 1) / 2) * .7; playerDot(c, Q, cx + Math.cos(a) * br * 2.1, cy + Math.sin(a) * br * 2.1, 7 * dpr, dpr, Q.id === ME.id); });
+  nearBase.forEach((Q, i) => { const a = -Math.PI / 2 + (i - (nearBase.length - 1) / 2) * .7, x = cx + Math.cos(a) * br * 2.1, y = cy + Math.sin(a) * br * 2.1; playerDot(c, Q, x, y, 7 * dpr, dpr, Q.id === ME.id); grabRing(c, Q, x, y, 13 * dpr, dpr); });
 }
 
 // ---------- map ----------
-function inPoly(x, y, pts) { let ins = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) ins = !ins; } return ins; }
-function roomAt(x, y) {
-  if (Math.hypot(x - 578, y - 845) < 55) return 'frontdoor';
-  for (const s of SPOTS) if (Math.hypot(x - ROOMS[s].x, y - ROOMS[s].y) < 70) return s;
-  for (const id in SHAPES) if (inPoly(x, y, SHAPES[id])) return id;
-  return null;
-}
+// Where a trooper is drawn: this phone's own tracked position is the most up to date.
+function ppos(Q) { if (Q.id === ME.id && Track.on && Track.p && Track.cal) return Track.p; const r = ROOMS[Q.room] || B; return { x: Q.x != null ? Q.x : r.x, y: Q.y != null ? Q.y : r.y }; }
+function grabRing(c, Q, x, y, r, dpr) { if (!(Q.grab > 0)) return; c.beginPath(); c.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, Q.grab)); c.strokeStyle = '#ff5a5a'; c.lineWidth = 5 * dpr; c.stroke(); }
 function drawMap() {
   const cv = mc(), dpr = fitCanvas(cv), c = cv.getContext('2d'), W = cv.width, H = cv.height; if (!W || !H) return;
   c.clearRect(0, 0, W, H);
@@ -281,11 +281,14 @@ function drawMap() {
   for (const tu of G.turrets) { const [x, y] = M(ROOMS[tu.room].x, ROOMS[tu.room].y); drawItem(c, 'turret', x + 30 * s, y - 30 * s, Math.max(22 * dpr, 50 * s)); }
   mapHits = [];
   if (G.power) { const base = Math.max(13 * dpr, 30 * s); for (const t of G.th) { const [x, y] = M(t.x, t.y), r = threatR(t.k, base); drawThreat(c, t, x, y, r, dpr, 1); mapHits.push({ id: t.id, x, y, r: r * 1.5 }); } }
-  const groups = {}; for (const Q of onlinePlayers()) (groups[Q.room] = groups[Q.room] || []).push(Q);
-  for (const room in groups) { const r0 = ROOMS[room]; const [x, y] = M(r0.x, r0.y + (room === 'base' ? -10 : 34)); const ar = Math.max(14 * dpr, 30 * s);
-    groups[room].forEach((Q, i) => { const px = x + (i - (groups[room].length - 1) / 2) * ar * 1.9; c.save(); if (Q.down) c.globalAlpha = .45; drawAvatar(c, Q.av, Q.color, px, y, ar); c.restore();
-      if (Q.id === ME.id) { circ(c, px, y + ar * .1, ar * 1.3); c.strokeStyle = COLORS[Q.color % COLORS.length]; c.lineWidth = 3 * dpr; c.stroke(); }
-      if (Q.inj > 0) { circ(c, px, y + ar * .1, ar * (1.5 + .2 * Math.sin(tnow * 8))); c.strokeStyle = '#ff5a5a'; c.lineWidth = 3 * dpr; c.stroke(); } }); }
+  const ar = Math.max(14 * dpr, 30 * s), drawn = [];
+  for (const Q of onlinePlayers()) {
+    const q = ppos(Q); let [px, y] = M(q.x, q.y); for (const o of drawn) if (Math.hypot(o[0] - px, o[1] - y) < ar * 1.6) px += ar * 1.8; drawn.push([px, y]);
+    c.save(); if (Q.down) c.globalAlpha = .45; drawAvatar(c, Q.av, Q.color, px, y, ar); c.restore();
+    if (Q.id === ME.id) { circ(c, px, y + ar * .1, ar * 1.3); c.strokeStyle = COLORS[Q.color % COLORS.length]; c.lineWidth = 3 * dpr; c.stroke(); }
+    if (Q.inj > 0) { circ(c, px, y + ar * .1, ar * (1.5 + .2 * Math.sin(tnow * 8))); c.strokeStyle = '#ff5a5a'; c.lineWidth = 3 * dpr; c.stroke(); }
+    grabRing(c, Q, px, y + ar * .1, ar * 1.7, dpr);
+  }
   if (G.chopper > 0) { const [bx, by] = M(ROOMS.balcony.x, ROOMS.balcony.y), p = Math.min(1, G.chopper * 1.3); heli(c, bx, by - (1 - p) * 200 * dpr, Math.max(18 * dpr, 40 * s), tnow); }
   if (!G.power && (G.phase === 'play')) { c.fillStyle = '#ff6a3d'; c.font = `${Math.round(20 * dpr)}px "Black Ops One", Impact, sans-serif`; c.fillText('RADAR OFFLINE', W / 2, 30 * dpr); }
 }
@@ -297,7 +300,7 @@ function bindCanvases() {
     const [x, y, d] = canvasPt(mc(), e); const h = pickHit(mapHits, x, y, d);
     if (h) { sel = h.id; Snd.play('tick'); return; }
     if (!mapGeo) return; const ux = (x - mapGeo.ox) / mapGeo.s, uy = (y - mapGeo.oy) / mapGeo.s; const room = roomAt(ux, uy);
-    if (room && G.phase === 'play') { act({ a: 'move', room }); Snd.play('tick'); toast(`You are at: ${ROOMS[room].n}`); }
+    if (room && G.phase === 'play') { act({ a: 'move', room }); if (Track.on) Track.resetTo(room); Snd.play('tick'); toast(`You are at: ${ROOMS[room].n}`); }
   });
 }
 
@@ -329,7 +332,7 @@ function renderLobby(force) {
       <div class="pf"><input id="nameIn" maxlength="16" placeholder="Name" value="${esc(ME.name)}" autocomplete="off">
       <div class="colors">${COLORS.map((c, i) => `<button style="background:${c}" data-col="${i}" aria-pressed="${ME.color === i}" aria-label="Color ${i + 1}"></button>`).join('')}</div></div></div></div>
     ${net}
-    <div class="row"><button class="btn ghost" id="sndBtn">${svg(Mic.on ? 'mic' : 'micoff')} Blaster sounds</button><button class="btn ghost" id="setBtn">${svg('gear')} Parent setup</button></div>`;
+    <div class="row"><button class="btn ghost" id="sndBtn">${svg(Mic.on ? 'mic' : 'micoff')} Blaster sounds</button><button class="btn ghost" id="moveBtn">${svg('feet')} Movement</button><button class="btn ghost" id="setBtn">${svg('gear')} Parent setup</button></div>`;
   if (nameFocused) { const n = $('#nameIn'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
 }
 let helloT = null;
@@ -350,6 +353,7 @@ function bindLobby() {
     else if (b.id === 'startBtn') { act({ a: 'start' }); }
     else if (b.id === 'leaveBtn') { Net.leave(); S.role = null; saveS(); G.players = {}; ensureSelf(); renderLobby(true); }
     else if (b.id === 'sndBtn') openSheet('sound');
+    else if (b.id === 'moveBtn') openSheet('move');
     else if (b.id === 'setBtn') openSheet('cmd', 'setup');
   });
 }
@@ -363,10 +367,10 @@ export function becomeHost(code) { Net.host(code); ensureSelf(); renderLobby(tru
 // ---------- sheets ----------
 function openSheet(kind, t) {
   sheetKind = kind; spawnK = null; armed = null;
-  const tabs = { cmd: [['spawn', 'SPAWN'], ['events', 'EVENTS'], ['players', 'TROOPERS'], ['say', 'RADIO'], ['setup', 'SETUP']].concat(Net.isHost() ? [['saves', 'SAVES']] : []),
+  const tabs = { cmd: [['spawn', 'SPAWN'], ['events', 'EVENTS'], ['players', 'TROOPERS'], ['say', 'RADIO'], ['voice', 'VOICE LINES'], ['setup', 'SETUP']].concat(Net.isHost() ? [['saves', 'SAVES']] : []), move: [],
     inv: [['w', 'WEAPONS'], ['it', 'ITEMS'], ['gear', 'GEAR']], calls: [], sound: [] }[kind];
   tab = t || (tabs.length ? tabs[0][0] : null);
-  $('#shTitle').textContent = { cmd: 'COMMAND', inv: 'INVENTORY', calls: 'RADIO', sound: 'BLASTER SOUNDS' }[kind];
+  $('#shTitle').textContent = { cmd: 'COMMAND', inv: 'INVENTORY', calls: 'RADIO', sound: 'BLASTER SOUNDS', move: 'MOVEMENT AND SCOPE' }[kind];
   $('#shTabs').innerHTML = tabs.map(([k, l]) => `<button class="tab" data-tab="${k}" role="tab" aria-selected="${k === tab}">${l}</button>`).join('');
   $('#shTabs').hidden = !tabs.length;
   $('#sheet').hidden = false; renderSheet();
@@ -376,7 +380,7 @@ function renderSheet() {
   if (!sheetKind) return;
   $$('#shTabs .tab').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === tab));
   const body = $('#shBody'), keep = body.scrollTop;
-  body.innerHTML = sheetKind === 'cmd' ? cmdHTML() : sheetKind === 'inv' ? invHTML() : sheetKind === 'calls' ? callsHTML() : soundHTML();
+  body.innerHTML = sheetKind === 'cmd' ? cmdHTML() : sheetKind === 'inv' ? invHTML() : sheetKind === 'calls' ? callsHTML() : sheetKind === 'move' ? moveHTML() : soundHTML();
   body.scrollTop = keep;
   if (sheetKind === 'calls') holdBtn($('#pttBig'), () => pttStart(), null, () => pttStop());
 }
@@ -441,6 +445,31 @@ function updateMeter() {
   m.querySelector('i').style.width = (Mic.on ? toPct(Mic.level) : 0) + '%';
   m.querySelector('b').style.left = (Mic.on ? toPct(Mic.floor * Mic.thr) : 0) + '%';
 }
+// ----- movement and scope -----
+function moveHTML() {
+  const c = Track.calib, cal = Track.cal;
+  let calHTML;
+  if (!c) calHTML = `<p class="note">${cal ? `Calibrated: ${cal.n1} steps out and ${cal.n2} back.` : 'Not calibrated yet. Tracking needs one calibration walk on this phone, by the person who will carry it.'}</p>
+      <button class="btn go" data-cal="start">${svg('feet')} ${cal ? 'Calibrate again' : 'Start calibration'}</button>`;
+  else if (c.phase === 'out') calHTML = `<div class="panel"><h3>1. WALK TO THE BALCONY</h3><p class="note">Start at Base Alpha. Hold the phone in front of you, screen up, and walk normally to the balcony door.</p>
+      <div class="codebig" id="mvCal">${c.n1}</div><span class="lbl" style="text-align:center">steps</span><button class="btn go" data-cal="turn">I'M AT THE BALCONY</button><button class="btn ghost sm" data-cal="cancel">Cancel</button></div>`;
+  else calHTML = `<div class="panel"><h3>2. WALK BACK TO BASE</h3><p class="note">Now walk back to Base Alpha the same way.</p>
+      <div class="codebig" id="mvCal">${c.n2}</div><span class="lbl" style="text-align:center">steps</span><button class="btn go" data-cal="done">I'M BACK AT BASE</button><button class="btn ghost sm" data-cal="cancel">Cancel</button></div>`;
+  return `<div class="sub"><span class="lbl">Step and compass tracking (this phone)</span>
+      <div class="detect" id="mvStat"></div>
+      <div class="row" style="justify-content:flex-start">${Track.on ? `<button class="btn ghost" data-trk="off">${svg('close')} Turn off</button>` : `<button class="btn go" data-trk="on">${svg('feet')} Turn on</button>`}</div>
+      ${Track.err ? `<p class="note" style="color:var(--alert)">${esc(Track.err)}</p>` : ''}
+      ${calHTML}
+      <p class="note">Each step moves your marker on the map. It can't walk through walls, so it snaps back on track at doorways. If it drifts, tap your room on the map: that resets it.</p></div>
+    <div class="sub"><span class="lbl">AR scope</span>
+      <p class="note">Shows the back camera in a small window with monsters drawn where the radar says they are. Point the phone around to find them. Needs tracking calibrated.</p>
+      <div class="row" style="justify-content:flex-start">${Scope.on ? `<button class="btn ghost" data-scope="off">${svg('close')} Close scope</button>` : `<button class="btn go" data-scope="on">${svg('target')} Open scope</button>`}</div>
+      ${Scope.err ? `<p class="note" style="color:var(--alert)">${esc(Scope.err)}</p>` : ''}</div>`;
+}
+function updateMove() {
+  const st = $('#mvStat'); if (st) st.innerHTML = Track.on ? `${svg('radar')}<div><b>${Track.heading == null ? 'No compass yet' : 'Heading ' + Math.round(Track.heading) + '°'}</b><br><small>${Track.steps} steps · at ${ROOMS[Track.room] ? ROOMS[Track.room].n : '?'}${Track.cal ? '' : ' · not calibrated'}</small></div>` : `<span class="note">Tracking is off.</span>`;
+  const c = $('#mvCal'); if (c && Track.calib) c.textContent = Track.calib.phase === 'out' ? Track.calib.n1 : Track.calib.n2;
+}
 // ----- command drawer -----
 function cmdHTML() {
   const playing = G.phase === 'play' || G.phase === 'emergency';
@@ -469,6 +498,16 @@ function cmdHTML() {
   if (tab === 'say') return `<div class="sub"><span class="lbl">Type a message</span><div class="field-in"><textarea id="sayTxt" maxlength="220" placeholder="Troopers, the snack supplies have arrived."></textarea></div>
       <div class="row" style="justify-content:flex-start"><button class="btn" data-x="say">${svg('radio')} Announce</button><button class="btn ghost" data-x="repeat">${svg('replay')} Repeat last</button></div></div>
     <div class="sub"><span class="lbl">Quick lines</span><div class="lines">${LINES.map((l, i) => `<button class="line" data-l="${i}">${svg('radio')}${esc(l.replace(/\{n\}/g, ME.name || 'Commander'))}</button>`).join('')}</div></div>`;
+  if (tab === 'voice') {
+    if (!Net.isHost()) return `<p class="note">Edit voice lines on the commander phone.</p>`;
+    const keys = Object.keys(VOICE).filter(k => VOICE[k][0] === vcat);
+    return `<div class="seg" data-g="vcat">${LINE_CATS.map(([k, n]) => `<button aria-pressed="${vcat === k}" data-v="${k}">${n}</button>`).join('')}</div>
+      <p class="note">One version per line; the game picks one at random each time. Leave out commas: the phone's voice pauses at every comma. Words in curly brackets get filled in by the game.</p>` +
+      keys.map(k => { const [, desc, , ph] = VOICE[k], edited = !!Lines.over[k], txt = Lines.text(k);
+        return `<div class="vline ${edited ? 'edited' : ''}"><div class="vh"><b>${esc(desc)}</b>${ph ? `<small>${esc(ph)}</small>` : ''}</div>
+          <textarea data-vk="${k}" rows="${Math.max(1, txt.split('\n').length)}" aria-label="${esc(desc)}">${esc(txt)}</textarea>
+          <div class="minirow"><button class="tg" data-vplay="${k}">${svg('play')} Hear it</button>${edited ? `<button class="tg" data-vreset="${k}">${svg('replay')} Original</button><span class="lbl" style="width:auto">EDITED</span>` : ''}</div></div>`; }).join('');
+  }
   if (tab === 'saves') {
     const l = Saves.list();
     return `<p class="note">Saves keep every trooper's rank, stars, weapons and items. They live on this phone. Back them up to a file now and then.</p>` +
@@ -486,13 +525,14 @@ function cmdHTML() {
     <div class="sub"><span class="lbl">This phone's speaker plays team announcements</span><div class="seg" data-g="speaker">${[[null, 'Auto'], [true, 'Always'], [false, 'Only mine']].map(([v, l]) => `<button aria-pressed="${S.speaker === v}" data-v="${v}">${l}</button>`).join('')}</div>
       <p class="note">Auto: the commander phone always speaks; other phones speak when their trooper is in a different room from the commander.</p></div>
     <div class="sub"><span class="lbl">Radar direction (this phone)</span><div class="seg" data-g="rot">${[[0, 'Balcony up'], [90, 'Balcony right'], [180, 'Balcony down'], [270, 'Balcony left']].map(([v, l]) => `<button aria-pressed="${S.rot === v}" data-v="${v}">${l}</button>`).join('')}</div></div>
-    <div class="row" style="justify-content:flex-start"><button class="btn ghost" data-x="sound">${svg('mic')} Blaster sounds</button><button class="btn ghost" data-x="end">${svg('back')} Back to start screen</button></div>
+    <div class="row" style="justify-content:flex-start"><button class="btn ghost" data-x="sound">${svg('mic')} Blaster sounds</button><button class="btn ghost" data-x="move">${svg('feet')} Movement</button><button class="btn ghost" data-x="end">${svg('back')} Back to start screen</button></div>
     ${Net.role ? `<p class="note">Game code: <b>${esc(Net.code)}</b> · ${esc(Net.status)}</p>` : ''}`;
 }
 function bindSheet() {
   $('#shClose').innerHTML = svg('close'); $('#shClose').addEventListener('click', closeSheet);
   $('#shTabs').addEventListener('click', e => { const b = e.target.closest('.tab'); if (!b) return; tab = b.dataset.tab; spawnK = null; armed = null; renderSheet(); });
-  $('#shBody').addEventListener('change', e => { if (e.target.matches('select[data-loc]')) { act({ a: 'move', room: e.target.value, who: e.target.dataset.p }); toast('Location set'); } });
+  $('#shBody').addEventListener('change', e => {
+    if (e.target.matches('textarea[data-vk]')) { act({ a: 'line', k: e.target.dataset.vk, v: e.target.value }); e.target.closest('.vline').classList.add('edited'); toast('Saved'); return; } if (e.target.matches('select[data-loc]')) { act({ a: 'move', room: e.target.value, who: e.target.dataset.p }); toast('Location set'); } });
   $('#shBody').addEventListener('input', e => {
     if (e.target.id === 'sensIn') { S.sens = +e.target.value; saveS(); Mic.applySens(); e.target.parentElement.querySelector('em').textContent = Math.round(S.sens * 100) + '%'; }
     if (e.target.id === 'strictIn') { S.strict = +e.target.value; saveS(); e.target.parentElement.querySelector('em').textContent = Math.round(S.strict * 100) + '%'; }
@@ -509,6 +549,7 @@ function bindSheet() {
       else if (g === 'rot') { S.rot = +v; saveS(); }
       else if (g === 'speaker') { S.speaker = v; saveS(); }
       else if (g === 'shotMode') { S.shotMode = v; saveS(); Mic.stopRec(); }
+      else if (g === 'vcat') { vcat = v; $('#shBody').scrollTop = 0; }
       renderSheet(); return;
     }
     const d = t.dataset;
@@ -523,6 +564,20 @@ function bindSheet() {
     if (d.rec) { Mic.startRec(d.rec, done => { renderSheet(); if (done) toast('Recorded!'); }); renderSheet(); return; }
     if (d.stoprec != null) { Mic.stopRec(); renderSheet(); return; }
     if (d.clr) { Mic.clear(d.clr); renderSheet(); return; }
+    // voice lines
+    if (d.vplay) { const ta = $(`textarea[data-vk="${d.vplay}"]`); const vers = (ta ? ta.value : Lines.text(d.vplay)).split('\n').map(x => x.trim()).filter(Boolean);
+      const sample = { name: ME.name || 'Jordi', where: 'the kitchen', monster: 'zombie', count: 'Two zombies', weapon: 'Striker AR', reward: 'a medkit', rank: 'Sergeant', names: 'Dad and Jordi', medic: 'Dad' };
+      const line = (vers[Math.floor(Math.random() * vers.length)] || '').replace(/\{(\w+)\}/g, (m, n) => sample[n] || m); if (line) { S.sound = true; Voice.say(line); ticker(line, 'radio'); } return; }
+    if (d.vreset) { act({ a: 'line', k: d.vreset, reset: true }); setTimeout(renderSheet, 100); return; }
+    // movement and scope
+    if (d.trk === 'on') { try { await Track.enable(); toast('Tracking on'); } catch (err) { toast(Track.err); } renderSheet(); return; }
+    if (d.trk === 'off') { Track.disable(); renderSheet(); return; }
+    if (d.cal === 'start') { if (!Track.on) { try { await Track.enable(); } catch (err) { toast(Track.err); renderSheet(); return; } } Track.calStart(); act({ a: 'move', room: 'base' }); renderSheet(); return; }
+    if (d.cal === 'turn') { Track.calTurn(); Snd.play('pop'); renderSheet(); return; }
+    if (d.cal === 'done') { const r = Track.calFinish(); toast(r.msg); renderSheet(); return; }
+    if (d.cal === 'cancel') { Track.calCancel(); renderSheet(); return; }
+    if (d.scope === 'on') { try { await Scope.enable(); } catch (err) { toast(Scope.err); } renderSheet(); return; }
+    if (d.scope === 'off') { Scope.disable(); renderSheet(); return; }
     // command
     if (d.k) { spawnK = d.k; renderSheet(); return; }
     if (d.r) { act({ a: 'spawn', k: spawnK, r: d.r, d: delay }); const nm = MONSTER_MENU.find(m => m[0] === spawnK)[1]; toast(`${nm} ${d.r === 'surprise' ? 'from a surprise spot' : 'from ' + ROOMS[d.r].n}${delay ? ` in ${delay}s` : ''}`); closeSheet(); return; }
@@ -551,6 +606,7 @@ function bindSheet() {
       case 'repeat': act({ a: 'repeat' }); break;
       case 'end': act({ a: 'end' }); closeSheet(); break;
       case 'sound': openSheet('sound'); break;
+      case 'move': openSheet('move'); break;
       case 'export': Saves.exportFile(); break;
       case 'import': $('#importIn').click(); break;
     }
@@ -586,13 +642,16 @@ export function ui() {
   $('#micBtn').innerHTML = svg(Mic.on ? 'mic' : 'micoff'); $('#micBtn').classList.toggle('live', Mic.on);
   $('#soundBtn').innerHTML = svg(S.sound ? 'sound' : 'mute'); $('#soundBtn').classList.toggle('on', !S.sound);
   $('#pauseBtn').innerHTML = svg(G.paused ? 'play' : 'pause');
+  $('#moveFab').classList.toggle('live', Track.on && !!Track.cal);
   // banner
   const bn = $('#banner'); const talkers = Object.values(G.players).filter(p => p.talk && p.id !== ME.id);
   let bh = '', bc = '';
   if (P && P.inj > 0) { bc = 'hurt'; bh = `${svg('medkit')}<span><b>YOU'RE HURT!</b> Get a teammate with a medkit.</span><span class="tm">${Math.ceil(P.inj)}s</span>`; }
+  else if (P && P.grab > 0) { bc = 'hurt'; bh = `${svg('alert')}<span><b>MONSTER ON YOU!</b> Shoot it or run!</span><span class="gbar"><i style="width:${Math.round(Math.min(1, P.grab) * 100)}%"></i></span>`; }
   else if (P && P.down) { bc = 'down'; bh = `${svg('home')}<span><b>OUT OF ACTION.</b> ${P.room === 'base' ? 'Recovering at base…' : 'Get back to base to recover.'}</span>${P.rec ? `<span class="tm">${Math.ceil(P.rec)}s</span>` : ''}`; }
   else if (talkers.length) { bc = 'talk'; bh = `${svg('radio')}<span><b>${esc(talkers[0].name.toUpperCase())}</b> is talking…</span>`; }
   else if (!Snd.ctx || Snd.ctx.state !== 'running') { if (ph !== 'start') { bc = 'down'; bh = `${svg('sound')}<span>Tap anywhere to turn on sound.</span>`; } }
+  document.body.classList.toggle('danger', !!(P && P.grab > 0));
   if (bn.dataset.h !== bh) { bn.dataset.h = bh; bn.innerHTML = bh; bn.className = 'banner ' + bc; bn.hidden = !bh; }
   const now = new Set(talkers.map(p => p.id)); for (const id of now) if (!prevTalk.has(id)) Snd.play('radio_on'); for (const id of prevTalk) if (!now.has(id)) Snd.play('radio_off'); prevTalk = now;
   // status
@@ -614,7 +673,9 @@ export function ui() {
   $('#shieldBtn').style.setProperty('--cd', G.cdShield / 30); $('#shieldBtn').classList.toggle('lit', G.shOn > 0);
   if (sel != null && !G.th.some(t => t.id === sel)) sel = null;
   renderCtx();
+  Track.sync(P);
   if (sheetKind === 'sound') updateMeter();
+  if (sheetKind === 'move') updateMove();
 }
 
 // ---------- loop ----------
@@ -624,6 +685,7 @@ function loop(t) {
   try {
     if (Net.isHost()) App.game.tick(dt); else App.game.lerp(dt);
     if (!$('#dock').hidden) drawRadar(dt); else if (!$('#field').hidden) drawMap();
+    Scope.draw(tnow, sel);
     uiT += dt; if (uiT > .12) { uiT = 0; ui(); }
     sheetT += dt; if (sheetT > 1 && sheetKind && (sheetKind === 'cmd' && tab === 'players' || sheetKind === 'inv') && !document.activeElement.matches('input,textarea,select')) { sheetT = 0; renderSheet(); }
   } catch (e) { console.error(e); }
@@ -631,6 +693,9 @@ function loop(t) {
 }
 export function startUI() {
   buildHeader(); buildPad(); bindCanvases(); bindLobby(); bindSheet(); bindOverlays();
+  $('#moveFab').innerHTML = svg('feet'); $('#moveFab').addEventListener('click', () => { unlock(); openSheet('move'); });
+  $('#scopeCv').addEventListener('pointerdown', e => { const id = Scope.pick(e); if (id != null) { sel = id; Snd.play('tick'); } });
+  $('#scopeX').innerHTML = svg('close'); $('#scopeX').addEventListener('click', () => Scope.disable());
   setView(S.view === 'field' ? 'field' : 'dock'); ticker(G.last, 'radio');
   requestAnimationFrame(loop);
 }
