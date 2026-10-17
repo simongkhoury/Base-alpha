@@ -104,10 +104,17 @@ export const Net = {
   // ----- walkie-talkie (each pair of phones keeps one audio call open; talking unmutes it) -----
   audioReady() {
     const ctx = App.snd.ctx; if (!ctx || this.talkDest) return !!this.talkDest;
-    this.talkDest = ctx.createMediaStreamDestination(); this.talkGain = ctx.createGain(); this.talkGain.gain.value = 0; this.talkGain.connect(this.talkDest);
+    // mic -> boost -> compressor -> on/off gate -> the stream every audio call carries.
+    // The mic runs without automatic gain (better for hearing blasters), so voices need the boost.
+    this.talkDest = ctx.createMediaStreamDestination(); this.talkGain = ctx.createGain(); this.talkGain.gain.value = 0;
+    this.talkBoost = ctx.createGain(); this.talkBoost.gain.value = 4;
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -26; comp.knee.value = 8; comp.ratio.value = 10; comp.attack.value = .003; comp.release.value = .2;
+    this.talkBoost.connect(comp); comp.connect(this.talkGain); this.talkGain.connect(this.talkDest);
     return true;
   },
-  micReady(src) { if (this.audioReady()) try { src.connect(this.talkGain); } catch (e) {} },
+  micReady(src) { if (this.audioReady()) try { src.connect(this.talkBoost); } catch (e) {} },
+  // Is the audio line to this phone working? (for the radio screen)
+  linkOK(peerId) { const c = this.calls.get(peerId), pc = c && c.peerConnection; return !!(c && c._got && pc && ['connected', 'completed'].includes(pc.iceConnectionState)); },
   meshTick() {
     if (!this.peer || !this.myPeer || !this.audioReady()) return;
     const peers = Object.values(App.game.G.players).filter(p => p.online && p.peer && p.peer !== this.myPeer).map(p => p.peer);
@@ -115,12 +122,20 @@ export const Net = {
       try { const call = this.peer.call(id, this.talkDest.stream); if (call) this.setupCall(id, call); } catch (e) {}
     }
     for (const id of [...this.calls.keys()]) if (!peers.includes(id)) this.endCall(id);
+    // Watchdog: a line that never got sound, or whose connection failed, is closed so it gets dialled again.
+    const now = Date.now();
+    for (const [id, c] of [...this.calls]) {
+      const pc = c.peerConnection, st = pc ? pc.iceConnectionState : 'new';
+      if (st === 'failed' || st === 'closed') { this.endCall(id); continue; }
+      if (st === 'disconnected') { c._disc = c._disc || now; if (now - c._disc > 5000) { this.endCall(id); continue; } } else c._disc = 0;
+      if (!c._got && now - c._t0 > 15000) this.endCall(id);
+    }
   },
   answer(call) { if (!this.audioReady()) { try { call.close(); } catch (e) {} return; } call.answer(this.talkDest.stream); this.setupCall(call.peer, call); },
   setupCall(id, call) {
     if (this.calls.has(id)) { try { this.calls.get(id).close(); } catch (e) {} }
-    this.calls.set(id, call);
-    call.on('stream', rs => {
+    this.calls.set(id, call); call._t0 = Date.now();
+    call.on('stream', rs => { call._got = true;
       let el = this.audios.get(id); if (!el) { el = document.createElement('audio'); el.autoplay = true; el.setAttribute('playsinline', ''); el.hidden = true; document.body.appendChild(el); this.audios.set(id, el); }
       el.srcObject = rs; el.play().catch(() => {});
     });
@@ -132,6 +147,7 @@ export const Net = {
     if (!this.audioReady()) return;
     App.mic.ptt = on;
     this.talkGain.gain.setTargetAtTime(on ? 1.4 : 0, App.snd.ctx.currentTime, .02);
+    if (on) { this.meshTick(); for (const el of this.audios.values()) el.play().catch(() => {}); }
     App.snd.play(on ? 'radio_on' : 'radio_off');
     App.ui.act({ a: 'ptt', on });
   },

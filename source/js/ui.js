@@ -34,6 +34,7 @@ export function unlock() {
   if (!started) { started = true; Voice.prime(); wakeLock(); if (S.micOn && !Mic.on) Mic.enable().catch(() => {}); if (S.trackOn && !Track.on) Track.enable().catch(() => {}); if (S.scopeOn && !Scope.on) Scope.enable().catch(() => {}); }
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && started) { wakeLock(); Snd.init(); } });
+document.addEventListener('pointerdown', () => { if (started && Mic.on && !Mic.alive()) Mic.restart(); }, { capture: true });
 document.addEventListener('pointerdown', () => { if (!Snd.ctx || Snd.ctx.state !== 'running') unlock(); }, { capture: true });
 
 // ---------- hold-to-act buttons ----------
@@ -126,7 +127,7 @@ function buildPad() {
   rb.addEventListener('contextmenu', e => e.preventDefault());
 }
 async function pttStart() {
-  if (!Mic.on) { try { await Mic.enable(); } catch (e) { toast(Mic.err || 'Microphone not available'); return; } }
+  if (!Mic.on || !Mic.alive()) { try { if (Mic.on) Mic.disable(); await Mic.enable(); } catch (e) { toast(Mic.err || 'Microphone not available'); return; } }
   Net.talk(true);
 }
 function pttStop() { if (Mic.ptt) Net.talk(false); }
@@ -529,7 +530,9 @@ function invHTML() {
 function callsHTML() {
   return `<button class="pttbig" id="pttBig">${svg('mic')} HOLD TO TALK</button>
     <div class="callgrid">${CALLS.map(([ic, t], i) => `<button data-call="${i}">${svg(ic)}${t}</button>`).join('')}</div>
-    <p class="note">Calls play on every linked phone. Talking needs the microphone on.</p>`;
+    <p class="note">Calls play on every linked phone. Talking needs the microphone on.</p>
+    <div class="sub"><span class="lbl">Radio lines</span>${onlinePlayers().filter(q => q.id !== ME.id && q.peer).map(q => `<div class="lnk ${Net.linkOK(q.peer) ? 'ok' : ''}"><img src="${avImg(q.av, q.color)}" alt="">${esc(q.name)}<span>${Net.linkOK(q.peer) ? 'CONNECTED' : 'CONNECTING…'}</span></div>`).join('') || '<p class="note">No teammates linked.</p>'}
+    ${Mic.on && !Mic.alive() ? '<p class="note" style="color:var(--alert)">The phone closed the microphone. Tap anywhere to reopen it.</p>' : ''}</div>`;
 }
 // ----- sound setup -----
 function soundHTML() {

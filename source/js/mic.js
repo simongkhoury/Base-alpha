@@ -99,6 +99,8 @@ export const Mic = {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
     } catch (e) { this.err = 'Microphone permission was refused. Allow it in the browser settings for this site, then try again.'; throw e; }
     this.ctx = ctx;
+    // The phone can take the microphone away (screen lock, a call, the camera). Notice, so it can be reopened.
+    this.lost = false; const tr = this.stream.getAudioTracks()[0]; if (tr) tr.addEventListener('ended', () => { this.lost = true; });
     if (!this._mod) { const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' })); await ctx.audioWorklet.addModule(url); this._mod = true; }
     this.src = ctx.createMediaStreamSource(this.stream);
     this.node = new AudioWorkletNode(ctx, 'ba-onset');
@@ -108,6 +110,8 @@ export const Mic = {
     App.net && App.net.micReady(this.src);
     return true;
   },
+  alive() { const tr = this.stream && this.stream.getAudioTracks()[0]; return !!(this.on && tr && tr.readyState === 'live' && !tr.muted && !this.lost); },
+  async restart() { if (this._restarting) return; this._restarting = true; try { this.disable(); await this.enable(); } catch (e) {} finally { this._restarting = false; } },
   disable() {
     try { this.stream && this.stream.getTracks().forEach(t => t.stop()); this.node && this.node.disconnect(); this.src && this.src.disconnect(); } catch (e) {}
     this.on = false; this.stream = this.node = this.src = null; S.micOn = false; saveS();

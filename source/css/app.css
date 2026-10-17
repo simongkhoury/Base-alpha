@@ -294,6 +294,7 @@ body.danger #app::after{content:"";position:fixed;inset:0;pointer-events:none;z-
 .fab2 .ico{width:16px;height:16px}.fab2 i{font-style:normal;font-family:var(--f-mono);font-size:10px;font-weight:700;letter-spacing:.04em}
 .fab2:not(.live){color:var(--muted);opacity:.85}
 .fab2b{top:90px}
+.lnk{display:flex;align-items:center;gap:8px;padding:6px 0;font-weight:700}.lnk img{width:28px;height:28px}.lnk span{margin-left:auto;font-family:var(--f-mono);font-size:12px;color:var(--alert)}.lnk.ok span{color:var(--phos)}
 .fab3{top:auto;bottom:6px;left:auto;right:4px;width:46px;height:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;line-height:1}
 .fab3 .ico{width:20px;height:20px}.fab3 i{font-style:normal;font-family:var(--f-mono);font-size:10px;font-weight:700}
 #map{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
