@@ -1,6 +1,18 @@
 // All drawn artwork: monster heads, weapons, items, avatars, and the line-icon set.
 import { TAU, App } from './core.js';
 import { COLORS } from './data.js';
+import { ART } from './artdata.js';
+
+// ---------- painted monster art (assets/monsters, packed by tools/make_art.py) ----------
+// Head portraits replace the drawn heads wherever they exist; body frames (walk + grab) are used in the AR scope.
+const MI = {}, BODY = {};
+const mk = src => { const im = new Image(); im.decoding = 'async'; im.src = src; return im; };
+if (typeof Image !== 'undefined') {
+  for (const k in ART.icon) MI[k] = mk(ART.icon[k]);
+  for (const k in ART.body) BODY[k] = { walk: ART.body[k].walk.map(mk), grab: ART.body[k].grab.map(mk) };
+}
+export const imgReady = im => !!(im && im.complete && im.naturalWidth > 0);
+export const bodyFrames = k => (BODY[k] && imgReady(BODY[k].walk[0]) ? BODY[k] : null);
 
 // ---------- line icons (SVG, currentColor) ----------
 export const I = {
@@ -91,6 +103,12 @@ function eye(c, x, y, er, px, py, ink) { circ(c, x, y, er); c.fillStyle = '#fff'
 
 // ---------- monster heads ----------
 export function head(c, k, x, y, r, o = {}) {
+  if (!o.drawn && imgReady(MI[k])) { // painted portrait
+    c.save(); c.translate(x, y); if (o.rot) c.rotate(o.rot);
+    const s = r * 2.45; c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; c.drawImage(MI[k], -s / 2, -s * .52, s, s);
+    if (o.vul) { c.setLineDash([r * .3, r * .2]); c.lineWidth = r * .14; c.strokeStyle = '#ffc83a'; circ(c, 0, 0, r * 1.18); c.stroke(); c.setLineDash([]); }
+    c.restore(); return;
+  }
   c.save(); c.translate(x, y); if (o.rot) c.rotate(o.rot); c.lineCap = 'round'; c.lineJoin = 'round';
   const L = r * .13;
   switch (k) {
@@ -304,7 +322,7 @@ export function avatar(c, av, color, x, y, r) {
 export const IMG = { m: {}, w: {}, i: {}, a: {} };
 function render(w, h, fn) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const c = cv.getContext('2d'); fn(c); return cv.toDataURL(); }
 export function makeImages() {
-  for (const k of ['z', 'h', 'tk', 'sp', 'iv', 'sl', 'dn', 'my', 'cat', 'rb']) IMG.m[k] = render(112, 112, c => head(c, k, 56, 62, k === 'h' ? 40 : 36));
+  for (const k of ['z', 'h', 'tk', 'sp', 'iv', 'sl', 'dn', 'my', 'cat', 'rb']) IMG.m[k] = ART.icon[k] || render(112, 112, c => head(c, k, 56, 62, k === 'h' ? 40 : 36, { drawn: true }));
   for (const k of ['handgun', 'striker', 'viper', 'longshot', 'laser', 'cannon']) IMG.w[k] = render(200, 100, c => weapon(c, k, 0, 2, 200));
   for (const k of ['medkit', 'freezebomb', 'bomb', 'booster', 'drone', 'turret', 'scope', 'vest', 'nvg', 'ammo', 'crate']) IMG.i[k] = render(112, 112, c => item(c, k, 56, 58, 100));
   for (let a = 0; a < 6; a++) for (let col = 0; col < 6; col++) IMG.a[a + '_' + col] = render(96, 96, c => avatar(c, a, col, 48, 52, 34));

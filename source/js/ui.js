@@ -167,7 +167,7 @@ const threatR = (k, base) => base * ({ h: 1.2, sl: 1.25, tk: 1.1 }[k] || 1);
 function decorate(c, t, x, y, r, dpr) {
   if (t.fz > 0) { circ(c, x, y, r * 1.25); c.fillStyle = 'rgba(134,220,255,.22)'; c.fill(); c.lineWidth = 2.5 * dpr; c.strokeStyle = '#86dcff'; c.stroke(); }
   if (t.sl) { c.fillStyle = '#cfe9ff'; c.font = `${Math.round(r * .7)}px "Black Ops One", Impact, sans-serif`; c.textAlign = 'left'; c.textBaseline = 'alphabetic'; const b = (tnow * 1.2) % 1; c.fillText('z', x + r * .9, y - r * .6 - b * r * .5); c.fillText('Z', x + r * 1.25, y - r * 1.1 - b * r * .5); }
-  if (t.mx > 1 && t.k !== 'h') { const n = Math.min(t.mx, 8), w = r * .3, gap = r * .07, tot = n * w + (n - 1) * gap, filled = Math.ceil(t.hp / t.mx * n); for (let i = 0; i < n; i++) { c.fillStyle = i < filled ? '#ffc83a' : 'rgba(255,255,255,.18)'; c.fillRect(x - tot / 2 + i * (w + gap), y + r * 1.25, w, r * .16); } }
+  if (t.mx > 1) { const n = Math.min(t.mx, 8), w = r * .3, gap = r * .07, tot = n * w + (n - 1) * gap, filled = Math.ceil(t.hp / t.mx * n); for (let i = 0; i < n; i++) { c.fillStyle = i < filled ? '#ffc83a' : 'rgba(255,255,255,.18)'; c.fillRect(x - tot / 2 + i * (w + gap), y + r * 1.25, w, r * .16); } }
   if (t.hitT > 0) { circ(c, x, y, r * 1.15); c.lineWidth = 3 * dpr; c.strokeStyle = '#fff'; c.stroke(); }
   const lk = shotNow && shotNow.lock && shotNow.lock.t.id === t.id ? shotNow.lock : null;
   if (lk) { // lock-on: green when the way is clear, orange through a wall
@@ -285,7 +285,7 @@ function drawRadar(dt) {
   circ(c, bx, by, br); c.fillStyle = '#ffc83a'; c.fill(); c.lineWidth = 3 * dpr; c.strokeStyle = '#5a430a'; c.stroke();
   c.fillStyle = '#0c100a'; c.font = `${Math.round(br * 1.15)}px "Black Ops One", Impact, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('A', bx, by + br * .06);
   hits = [];
-  if (G.power) { const base = Math.max(14 * dpr, R * .072);
+  if (G.power) { const base = Math.max(11 * dpr, R * .056) * (follow ? .9 : 1);
     for (const t of G.th) { const [x, y] = P(t.x, t.y), r = threatR(t.k, base); const a = Math.atan2(y - cy, x - cx); const since = angDiff(sweep, a) / TAU; drawThreat(c, t, x, y, r, dpr, .6 + .4 * Math.pow(1 - since, 2)); hits.push({ id: t.id, x, y, r: r * 1.5 }); } }
   // players
   const nearBase = [];
