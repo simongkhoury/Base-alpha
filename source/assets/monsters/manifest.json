@@ -1,0 +1,289 @@
+{
+  "frame_size": [
+    384,
+    384
+  ],
+  "loop": true,
+  "enemies": {
+    "zombie": {
+      "icon": "zombie/icon-128.png",
+      "sheet": "zombie/sprite-sheet.png",
+      "sheet_columns": 4,
+      "sheet_rows": 4,
+      "animations": {
+        "walk": {
+          "webp": "zombie/walk.webp",
+          "apng": "zombie/walk.png",
+          "frames": [
+            "zombie/walk/00.png",
+            "zombie/walk/01.png",
+            "zombie/walk/02.png",
+            "zombie/walk/03.png",
+            "zombie/walk/04.png",
+            "zombie/walk/05.png",
+            "zombie/walk/06.png",
+            "zombie/walk/07.png"
+          ],
+          "duration_per_frame_ms": 125,
+          "atlas_start_frame": 0
+        },
+        "grab": {
+          "webp": "zombie/grab.webp",
+          "apng": "zombie/grab.png",
+          "frames": [
+            "zombie/grab/00.png",
+            "zombie/grab/01.png",
+            "zombie/grab/02.png",
+            "zombie/grab/03.png",
+            "zombie/grab/04.png",
+            "zombie/grab/05.png",
+            "zombie/grab/06.png",
+            "zombie/grab/07.png"
+          ],
+          "duration_per_frame_ms": 150,
+          "atlas_start_frame": 8
+        }
+      }
+    },
+    "horde": {
+      "icon": "horde/icon-128.png",
+      "sheet": "horde/sprite-sheet.png",
+      "sheet_columns": 4,
+      "sheet_rows": 4,
+      "animations": {
+        "walk": {
+          "webp": "horde/walk.webp",
+          "apng": "horde/walk.png",
+          "frames": [
+            "horde/walk/00.png",
+            "horde/walk/01.png",
+            "horde/walk/02.png",
+            "horde/walk/03.png",
+            "horde/walk/04.png",
+            "horde/walk/05.png",
+            "horde/walk/06.png",
+            "horde/walk/07.png"
+          ],
+          "duration_per_frame_ms": 125,
+          "atlas_start_frame": 0
+        },
+        "grab": {
+          "webp": "horde/grab.webp",
+          "apng": "horde/grab.png",
+          "frames": [
+            "horde/grab/00.png",
+            "horde/grab/01.png",
+            "horde/grab/02.png",
+            "horde/grab/03.png",
+            "horde/grab/04.png",
+            "horde/grab/05.png",
+            "horde/grab/06.png",
+            "horde/grab/07.png"
+          ],
+          "duration_per_frame_ms": 150,
+          "atlas_start_frame": 8
+        }
+      }
+    },
+    "tank": {
+      "icon": "tank/icon-128.png",
+      "sheet": "tank/sprite-sheet.png",
+      "sheet_columns": 4,
+      "sheet_rows": 4,
+      "animations": {
+        "walk": {
+          "webp": "tank/walk.webp",
+          "apng": "tank/walk.png",
+          "frames": [
+            "tank/walk/00.png",
+            "tank/walk/01.png",
+            "tank/walk/02.png",
+            "tank/walk/03.png",
+            "tank/walk/04.png",
+            "tank/walk/05.png",
+            "tank/walk/06.png",
+            "tank/walk/07.png"
+          ],
+          "duration_per_frame_ms": 180,
+          "atlas_start_frame": 0
+        },
+        "grab": {
+          "webp": "tank/grab.webp",
+          "apng": "tank/grab.png",
+          "frames": [
+            "tank/grab/00.png",
+            "tank/grab/01.png",
+            "tank/grab/02.png",
+            "tank/grab/03.png",
+            "tank/grab/04.png",
+            "tank/grab/05.png",
+            "tank/grab/06.png",
+            "tank/grab/07.png"
+          ],
+          "duration_per_frame_ms": 150,
+          "atlas_start_frame": 8
+        }
+      }
+    },
+    "speedy": {
+      "icon": "speedy/icon-128.png",
+      "sheet": "speedy/sprite-sheet.png",
+      "sheet_columns": 4,
+      "sheet_rows": 4,
+      "animations": {
+        "walk": {
+          "webp": "speedy/walk.webp",
+          "apng": "speedy/walk.png",
+          "frames": [
+            "speedy/walk/00.png",
+            "speedy/walk/01.png",
+            "speedy/walk/02.png",
+            "speedy/walk/03.png",
+            "speedy/walk/04.png",
+            "speedy/walk/05.png",
+            "speedy/walk/06.png",
+            "speedy/walk/07.png"
+          ],
+          "duration_per_frame_ms": 80,
+          "atlas_start_frame": 0
+        },
+        "grab": {
+          "webp": "speedy/grab.webp",
+          "apng": "speedy/grab.png",
+          "frames": [
+            "speedy/grab/00.png",
+            "speedy/grab/01.png",
+            "speedy/grab/02.png",
+            "speedy/grab/03.png",
+            "speedy/grab/04.png",
+            "speedy/grab/05.png",
+            "speedy/grab/06.png",
+            "speedy/grab/07.png"
+          ],
+          "duration_per_frame_ms": 150,
+          "atlas_start_frame": 8
+        }
+      }
+    },
+    "invisible": {
+      "icon": "invisible/icon-128.png",
+      "sheet": "invisible/sprite-sheet.png",
+      "sheet_columns": 4,
+      "sheet_rows": 4,
+      "animations": {
+        "walk": {
+          "webp": "invisible/walk.webp",
+          "apng": "invisible/walk.png",
+          "frames": [
+            "invisible/walk/00.png",
+            "invisible/walk/01.png",
+            "invisible/walk/02.png",
+            "invisible/walk/03.png",
+            "invisible/walk/04.png",
+            "invisible/walk/05.png",
+            "invisible/walk/06.png",
+            "invisible/walk/07.png"
+          ],
+          "duration_per_frame_ms": 125,
+          "atlas_start_frame": 0
+        },
+        "grab": {
+          "webp": "invisible/grab.webp",
+          "apng": "invisible/grab.png",
+          "frames": [
+            "invisible/grab/00.png",
+            "invisible/grab/01.png",
+            "invisible/grab/02.png",
+            "invisible/grab/03.png",
+            "invisible/grab/04.png",
+            "invisible/grab/05.png",
+            "invisible/grab/06.png",
+            "invisible/grab/07.png"
+          ],
+          "duration_per_frame_ms": 150,
+          "atlas_start_frame": 8
+        }
+      }
+    },
+    "sleepy_giant": {
+      "icon": "sleepy_giant/icon-128.png",
+      "sheet": "sleepy_giant/sprite-sheet.png",
+      "sheet_columns": 4,
+      "sheet_rows": 4,
+      "animations": {
+        "walk": {
+          "webp": "sleepy_giant/walk.webp",
+          "apng": "sleepy_giant/walk.png",
+          "frames": [
+            "sleepy_giant/walk/00.png",
+            "sleepy_giant/walk/01.png",
+            "sleepy_giant/walk/02.png",
+            "sleepy_giant/walk/03.png",
+            "sleepy_giant/walk/04.png",
+            "sleepy_giant/walk/05.png",
+            "sleepy_giant/walk/06.png",
+            "sleepy_giant/walk/07.png"
+          ],
+          "duration_per_frame_ms": 220,
+          "atlas_start_frame": 0
+        },
+        "grab": {
+          "webp": "sleepy_giant/grab.webp",
+          "apng": "sleepy_giant/grab.png",
+          "frames": [
+            "sleepy_giant/grab/00.png",
+            "sleepy_giant/grab/01.png",
+            "sleepy_giant/grab/02.png",
+            "sleepy_giant/grab/03.png",
+            "sleepy_giant/grab/04.png",
+            "sleepy_giant/grab/05.png",
+            "sleepy_giant/grab/06.png",
+            "sleepy_giant/grab/07.png"
+          ],
+          "duration_per_frame_ms": 150,
+          "atlas_start_frame": 8
+        }
+      }
+    },
+    "dancer": {
+      "icon": "dancer/icon-128.png",
+      "sheet": "dancer/sprite-sheet.png",
+      "sheet_columns": 4,
+      "sheet_rows": 4,
+      "animations": {
+        "walk": {
+          "webp": "dancer/walk.webp",
+          "apng": "dancer/walk.png",
+          "frames": [
+            "dancer/walk/00.png",
+            "dancer/walk/01.png",
+            "dancer/walk/02.png",
+            "dancer/walk/03.png",
+            "dancer/walk/04.png",
+            "dancer/walk/05.png",
+            "dancer/walk/06.png",
+            "dancer/walk/07.png"
+          ],
+          "duration_per_frame_ms": 125,
+          "atlas_start_frame": 0
+        },
+        "grab": {
+          "webp": "dancer/grab.webp",
+          "apng": "dancer/grab.png",
+          "frames": [
+            "dancer/grab/00.png",
+            "dancer/grab/01.png",
+            "dancer/grab/02.png",
+            "dancer/grab/03.png",
+            "dancer/grab/04.png",
+            "dancer/grab/05.png",
+            "dancer/grab/06.png",
+            "dancer/grab/07.png"
+          ],
+          "duration_per_frame_ms": 150,
+          "atlas_start_frame": 8
+        }
+      }
+    }
+  }
+}

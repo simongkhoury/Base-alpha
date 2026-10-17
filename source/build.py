@@ -21,4 +21,7 @@ html = html.replace('<script type="module" src="js/main.js"></script>', '<script
 assert 'src="js/' not in html and 'href="css/' not in html
 (root/'dist').mkdir(exist_ok=True)
 (root/'dist/index.html').write_text(html)
+# AR body frames are loaded on demand, next to the page
+import shutil
+if (root/'art').exists(): shutil.rmtree(root/'dist/art', ignore_errors=True); shutil.copytree(root/'art', root/'dist/art')
 print('dist/index.html', len(html)//1024, 'KB')

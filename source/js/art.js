@@ -7,12 +7,14 @@ import { ART } from './artdata.js';
 // Head portraits replace the drawn heads wherever they exist; body frames (walk + grab) are used in the AR scope.
 const MI = {}, BODY = {};
 const mk = src => { const im = new Image(); im.decoding = 'async'; im.src = src; return im; };
-if (typeof Image !== 'undefined') {
-  for (const k in ART.icon) MI[k] = mk(ART.icon[k]);
-  for (const k in ART.body) BODY[k] = { walk: ART.body[k].walk.map(mk), grab: ART.body[k].grab.map(mk) };
-}
+if (typeof Image !== 'undefined') for (const k in ART.icon) MI[k] = mk(ART.icon[k]);
 export const imgReady = im => !!(im && im.complete && im.naturalWidth > 0);
-export const bodyFrames = k => (BODY[k] && imgReady(BODY[k].walk[0]) ? BODY[k] : null);
+// Body strips (8 frames side by side) are separate files, fetched the first time the AR scope opens.
+export function loadBodies() {
+  if (typeof Image === 'undefined') return;
+  for (const k in ART.body) if (!BODY[k]) { const b = ART.body[k]; BODY[k] = {}; for (const a in b) BODY[k][a] = { im: mk(b[a].src), n: b[a].n, ms: b[a].ms }; }
+}
+export const bodyFrames = k => (BODY[k] && BODY[k].walk && imgReady(BODY[k].walk.im) ? BODY[k] : null);
 
 // ---------- line icons (SVG, currentColor) ----------
 export const I = {

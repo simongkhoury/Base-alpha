@@ -2,13 +2,15 @@
 // Uses the compass direction (from movement tracking) and the trooper's position on the plan.
 import { App, S, saveS, TAU } from './core.js';
 import { T } from './data.js';
-import { head, circ, bodyFrames } from './art.js';
+import { head, circ, bodyFrames, loadBodies, imgReady } from './art.js';
 
 const FOV = 60; // degrees of view shown left to right
+const SIZE = { z: 1, h: 1.9, tk: 1.3, sp: .95, iv: 1, sl: 1.4, dn: 1.05 }; // body height compared with a zombie
+const SIDE = { dn: 1, sp: 1 };  // drawn walking sideways (to the right), so they get turned towards you
 export const Scope = {
   on: false, stream: null, err: '', hits: [],
   async enable() {
-    this.err = '';
+    this.err = ''; loadBodies();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { this.err = 'This browser cannot use the camera.'; throw new Error(this.err); }
     try { this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }); }
     catch (e) { this.err = 'Camera permission was refused. Allow the camera for this site, then try again.'; throw e; }
@@ -48,12 +50,14 @@ export const Scope = {
       let y = H * .55 + Math.sin(tnow * 3 + o.t.id) * 4 * d;
       const k = o.t.rv === false ? 'my' : o.t.k, body = bodyFrames(k);
       if (body) { // full body: walking, or reaching for you when it's next to you
-        const party = G.dance > 0 || o.t.dz > 0, grab = o.t.inC && !party, set = grab ? body.grab : body.walk;
-        const fps = party ? 16 : grab ? 10 : 8, i = o.t.fz > 0 ? 0 : Math.floor(tnow * fps + o.t.id * 3) % set.length;
-        const hgt = Math.min(rr * 3.4, H * .8), top = H * .58 - hgt * .62 + (party ? -Math.abs(Math.sin(tnow * 8)) * rr * .3 : 0);
-        const face = o.t._face = Math.abs(x - W / 2) < W * .06 ? (o.t._face || 1) : (x < W / 2 ? 1 : -1); // turned towards you
+        const party = G.dance > 0 || o.t.dz > 0, grab = o.t.inC && !party && body.grab && imgReady(body.grab.im), A = grab ? body.grab : body.walk;
+        const still = o.t.fz > 0 || o.t.sl, i = still ? 0 : Math.floor(tnow * 1000 / A.ms * (party ? 2 : 1) + o.t.id * 3) % A.n;
+        const hgt = Math.min(rr * 3.4 * (SIZE[k] || 1), H * .85), top = H * .58 - hgt * .62 + (party ? -Math.abs(Math.sin(tnow * 8)) * rr * .3 : 0);
+        const face = !SIDE[k] ? 1 : (o.t._face = Math.abs(x - W / 2) < W * .06 ? (o.t._face || 1) : (x < W / 2 ? 1 : -1)); // turned towards you
         const bx = Math.min(W - hgt * .3, Math.max(hgt * .3, x));             // keep a close one on screen
-        c.save(); c.translate(bx, top + hgt / 2); c.scale(face, 1); c.drawImage(set[i], -hgt / 2, -hgt / 2, hgt, hgt); c.restore();
+        const fw = A.im.naturalWidth / A.n, fh = A.im.naturalHeight;
+        c.save(); c.translate(bx, top + hgt / 2); c.scale(face, 1); if (k === 'iv') c.globalAlpha = .8;
+        c.drawImage(A.im, i * fw, 0, fw, fh, -hgt / 2, -hgt / 2, hgt, hgt); c.restore();
         x = bx; y = top + hgt / 2; rr = hgt * .4;
       } else head(c, k, x, y, rr, { vul: o.t.vul > 0, heads: Math.ceil((o.t.hp || 2) / 2) });
       if (o.t.fz > 0) { circ(c, x, y, rr * 1.2); c.strokeStyle = '#86dcff'; c.lineWidth = 3 * d; c.stroke(); }
