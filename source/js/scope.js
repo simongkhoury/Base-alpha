@@ -9,17 +9,18 @@ const SIZE = { z: 1, h: 1.9, tk: 1.3, sp: .95, iv: 1, sl: 1.4, dn: 1.05 }; // bo
 const SIDE = { dn: 1, sp: 1 };  // drawn walking sideways (to the right), so they get turned towards you
 export const Scope = {
   on: false, stream: null, err: '', hits: [],
-  async enable() {
+  auto: false, // opened by itself because a monster got close
+  async enable(auto) {
     this.err = ''; loadBodies();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { this.err = 'This browser cannot use the camera.'; throw new Error(this.err); }
     try { this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }); }
     catch (e) { this.err = 'Camera permission was refused. Allow the camera for this site, then try again.'; throw e; }
     const v = document.getElementById('scopeVid'); v.srcObject = this.stream; v.muted = true; v.setAttribute('playsinline', ''); await v.play().catch(() => {});
-    this.on = true; S.scopeOn = true; saveS(); document.getElementById('scope').hidden = false;
+    this.on = true; this.auto = !!auto; if (!auto) { S.scopeOn = true; saveS(); } document.getElementById('scope').hidden = false;
   },
   disable() {
     try { this.stream && this.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
-    this.stream = null; this.on = false; S.scopeOn = false; saveS(); document.getElementById('scope').hidden = true;
+    this.stream = null; this.on = false; if (!this.auto) { S.scopeOn = false; saveS(); } this.auto = false; document.getElementById('scope').hidden = true;
   },
   draw(tnow, sel) {
     if (!this.on) return;

@@ -85,10 +85,12 @@ function cos(u, v) { let d = 0, x = 0, y = 0; for (let i = 0; i < u.length; i++)
 export function similarity(f, g) { return (cos(f.a, g.a) * 1 + cos(f.b, g.b) * .7 + cos(f.e, g.e) * .6) / 2.3; }
 
 // ---------- the detector ----------
+export const ONE_KEYS = ['one', 'one2', 'one3', 'one4'];
+export const oneName = k => 'Blaster ' + (ONE_KEYS.indexOf(k) + 1);
 export const Mic = {
   ctx: null, stream: null, src: null, node: null, on: false, level: 0, floor: 1e-6, thr: 12,
   quietUntil: 0, speechUntil: 0, pauseUntil: 0, blocks: [], recent: [], ptt: false, rec: null, last: null, err: '',
-  sig: load('ba2.sig', {}), // { key: [features, ...] }  keys: 'one' or a weapon id
+  sig: load('ba2.sig', {}), // { key: [features, ...] }  keys: 'one', 'one2'... (one sound for all) or a weapon id
   async enable() {
     this.err = '';
     const ctx = App.snd.init(); if (!ctx) { this.err = 'Sound is not available on this browser.'; throw new Error(this.err); }
@@ -154,10 +156,13 @@ export const Mic = {
     let res = null;
     if (mode === 'snap') res = { ok: true, w: null, score: 1 };
     else if (mode === 'one') {
-      const s = this.sig.one; if (!s || !s.length) res = { ok: true, w: null, score: 1, note: 'no recording' };
-      else { const sc = Math.max(...s.map(g => similarity(f, g))); res = { ok: sc >= S.strict, w: null, score: sc }; }
+      // any of the recorded blasters counts (two players with two different blasters, for example)
+      const keys = ONE_KEYS.filter(k => this.sig[k] && this.sig[k].length);
+      if (!keys.length) res = { ok: true, w: null, score: 1, note: 'no recording' };
+      else { let sc = -1, key = null; for (const k of keys) { const v = Math.max(...this.sig[k].map(g => similarity(f, g))); if (v > sc) { sc = v; key = k; } }
+        res = { ok: sc >= S.strict, w: null, score: sc, key }; }
     } else {
-      const scores = Object.keys(this.sig).filter(k => k !== 'one' && this.sig[k].length).map(k => [k, Math.max(...this.sig[k].map(g => similarity(f, g)))]).sort((a, b) => b[1] - a[1]);
+      const scores = Object.keys(this.sig).filter(k => !ONE_KEYS.includes(k) && this.sig[k].length).map(k => [k, Math.max(...this.sig[k].map(g => similarity(f, g)))]).sort((a, b) => b[1] - a[1]);
       if (!scores.length) res = { ok: true, w: null, score: 1, note: 'no recordings' };
       else { const [w, sc] = scores[0]; const second = scores[1] ? scores[1][1] : -1;
         res = { ok: sc >= S.strict && sc - second >= .015, w, score: sc, second: scores[1] ? scores[1][0] : null }; }

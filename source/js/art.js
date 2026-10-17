@@ -74,6 +74,7 @@ export const I = {
   home: '<path d="M3 11 12 4l9 7v9H3z"/><path d="M9 20v-6h6v6"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
   upload: '<path d="M12 15V3M7 8l5-5 5 5M4 21h16"/>',
+  cam: '<path d="M3 8h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13.5" r="4"/>',
   power: '<path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0"/>',
   zoomin: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5M10.5 7.5v6M7.5 10.5h6"/>',
   house: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M12 20v-5"/>',

@@ -439,6 +439,15 @@ function startGame() {
   G.phase = 'play'; G.paused = false; G.autoT = 10; G.dropT = rnd(120, 200); G.shield = 100; G.sesStars = 0; sfx('power');
   const n = online().map(p => p.name); say(L('start', { names: n.length > 1 ? n.slice(0, -1).join(' ') + ' and ' + n[n.length - 1] : n[0] || 'Commander' }), 2, 'radar');
 }
+// Commander: start this round again. Monsters, missions and crates are cleared; stars and inventories stay.
+function restartRound() {
+  if (G.phase === 'start') return;
+  G.th.length = 0; G.mission = null; G.finale = false; G.chopper = 0; G.power = true; G.paused = false; G.drops.length = 0; G.turrets.length = 0; pend.length = 0;
+  G.shield = 100; G.shOn = 0; G.cdShield = 0; G.scan = 0; G.dance = 0; G.interf = 0; G.robot = 0; G.drone = 0; G.emerg = 0; G.holds = {}; G.repairBy = null;
+  G.autoT = 10; G.dropT = rnd(120, 200); G.sesStars = 0; G.lastShot = -99; G.lastBomb = -99; G.phase = 'play';
+  for (const P of Object.values(G.players)) { P.inj = 0; P.down = false; P.rec = 0; P.grab = 0; P.mode = null; P.cdFire = 0; P.cdLaser = 0; P.cdFrz = 0; place(P, 'base'); }
+  sfx('power'); say(L('restart'), 2, 'replay');
+}
 function wakeBase() { G.phase = 'play'; G.autoT = 12; sfx('power'); say(L('wake'), 2, 'radar'); }
 function endSession() { G.phase = 'start'; G.th.length = 0; G.mission = null; G.finale = false; G.chopper = 0; G.power = true; G.paused = false; G.drops.length = 0; G.turrets.length = 0; pend.length = 0; }
 
@@ -557,6 +566,7 @@ export function apply(a, pid) {
     case 'start': if (G.phase === 'start') startGame(); break;
     case 'wake': if (G.phase === 'night' || G.phase === 'victory') wakeBase(); break;
     case 'night': nightWatch(); break;
+    case 'restart': restartRound(); break;
     case 'end': endSession(); break;
     case 'set': setCfg(a.k, a.v); break;
     case 'line': if (typeof a.k === 'string' && LINES[a.k]) { if (a.reset) Lines.reset(a.k); else Lines.set(a.k, String(a.v || '')); App.saves && App.saves.autosave(); } break;

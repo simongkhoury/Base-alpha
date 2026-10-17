@@ -115,6 +115,7 @@ export const LINES = {
   turret_off: ['items', 'Turret runs out', ['Mini turret is out of power.'], ''],
   // ----- game -----
   start: ['game', 'Game starts', ['Base Alpha online! Welcome {names}! Radar is scanning.'], '{names}'],
+  restart: ['game', 'Commander restarts the round', ['Round restarted! Everyone back to Base Alpha. Here we go again!'], ''],
   wake: ['game', 'Base wakes up', ['Base Alpha is back online! Stay sharp troopers!'], ''],
   pause: ['game', 'Pause', ['Pause! Break time troopers.'], ''],
   resume: ['game', 'Resume', ['Resuming! Stay alert!'], ''],

@@ -293,6 +293,7 @@ body.danger #app::after{content:"";position:fixed;inset:0;pointer-events:none;z-
 .fab2{top:50px;width:40px;height:34px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;padding:2px 0;line-height:1}
 .fab2 .ico{width:16px;height:16px}.fab2 i{font-style:normal;font-family:var(--f-mono);font-size:10px;font-weight:700;letter-spacing:.04em}
 .fab2:not(.live){color:var(--muted);opacity:.85}
+.fab2b{top:90px}
 .fab3{top:auto;bottom:6px;left:auto;right:4px;width:44px;height:44px}
 .pb.fire.lock{box-shadow:0 0 0 3px var(--phos),0 0 22px rgba(141,252,158,.55)}
 .pb.wpn.boost .am small{color:var(--phos)}

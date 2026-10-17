@@ -8,7 +8,7 @@ import { svg, IMG, avImg, icHTML, head, heli, item as drawItem, avatar as drawAv
 import { pickTarget, coneAt } from './aim.js';
 import { G, fireCheck, fireSound, canTarget } from './game.js';
 import { Snd, Voice } from './audio.js';
-import { Mic } from './mic.js';
+import { Mic, ONE_KEYS, oneName } from './mic.js';
 import { Net } from './net.js';
 import { Saves } from './saves.js';
 
@@ -17,7 +17,7 @@ const act = a => Net.act(a);
 const onlinePlayers = () => Object.values(G.players).filter(p => p.online);
 let sel = null;          // targeted monster id (this phone)
 let sheetKind = null, tab = null, spawnK = null, delay = 0, armed = null, vcat = 'monsters';
-let started = false, wl = null;
+let started = false, wl = null, addBlaster = false;
 
 // ---------- ticker, toast ----------
 export function ticker(text, ic, personal) {
@@ -154,7 +154,7 @@ function buildHeader() {
 export function setView(v) {
   S.view = v; saveS(); $('#dock').hidden = v !== 'dock'; $('#field').hidden = v !== 'field';
   const home = v === 'dock' ? $('#dockSide') : $('#fieldSide'); home.appendChild($('#statusRow')); home.appendChild($('#pad'));
-  (v === 'dock' ? $('#radarWrap') : $('#mapWrap')).appendChild($('#scope')); (v === 'dock' ? $('#radarWrap') : $('#mapWrap')).appendChild($('#moveFab')); (v === 'dock' ? $('#radarWrap') : $('#mapWrap')).appendChild($('#trackFab'));
+  (v === 'dock' ? $('#radarWrap') : $('#mapWrap')).appendChild($('#scope')); (v === 'dock' ? $('#radarWrap') : $('#mapWrap')).appendChild($('#moveFab')); (v === 'dock' ? $('#radarWrap') : $('#mapWrap')).appendChild($('#trackFab')); (v === 'dock' ? $('#radarWrap') : $('#mapWrap')).appendChild($('#camFab'));
   $('#modeBtn').innerHTML = svg(v === 'dock' ? 'map' : 'radar'); $('#modeBtn').setAttribute('aria-label', v === 'dock' ? 'Switch to the map' : 'Switch to the radar');
 }
 
@@ -495,7 +495,13 @@ function soundHTML() {
       <div class="dots">${[0, 1, 2, 3, 4].map(i => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</div></div>
       ${recNow ? `<button class="btn warn sm" data-stoprec>STOP</button>` : `<button class="btn sm" data-rec="${key}" ${Mic.on ? '' : 'disabled'}>${svg('mic')} ${s.length ? 'REDO' : 'RECORD'}</button>${s.length ? `<button class="btn ghost sm" data-clr="${key}" aria-label="Clear">${svg('clear')}</button>` : ''}`}</div>`; };
   let rec = '';
-  if (S.shotMode === 'one') rec = `<div class="sub"><span class="lbl">Record the blaster</span>${recRow('one', 'All weapons', null)}<p class="note">Fire 5 times about one step from the phone. The game then fires your selected weapon whenever it hears that sound.</p></div>`;
+  if (S.shotMode === 'one') {
+    const have = ONE_KEYS.filter(k => Mic.sig[k] && Mic.sig[k].length || (Mic.rec && Mic.rec.key === k)), next = ONE_KEYS.find(k => !have.includes(k));
+    const rows = have.concat(next && (!have.length || addBlaster) ? [next] : []);
+    rec = `<div class="sub"><span class="lbl">Record the blasters</span>${rows.map(k => recRow(k, oneName(k), null)).join('')}
+      ${next && have.length && !addBlaster ? `<button class="btn ghost sm" data-x="addblaster">${svg('plus')} Add another blaster</button>` : ''}
+      <p class="note">Fire each blaster 5 times about one step from the phone. Any recorded blaster fires your selected weapon. Record a second one when two players use different blasters near this phone.</p></div>`;
+  }
   if (S.shotMode === 'each') rec = `<div class="sub"><span class="lbl">Record each blaster</span>${WEAPON_ORDER.map(k => recRow(k, WEAPONS[k].n, IMG.w[k])).join('')}
     <p class="note">Fire each blaster 5 times about one step from the phone. When the game hears one, it switches to that weapon and fires. Blasters that sound alike will get mixed up.</p></div>`;
   return `<div class="sub"><span class="lbl">Microphone on this phone</span>
@@ -513,7 +519,7 @@ function renderDetect() {
   const r = Mic.last, el = $('#detBox'); if (!el || !r) return;
   el.className = 'detect ' + (r.ok ? 'ok' : 'no');
   const w = r.w || (r.ok ? me() && me().wpn : r.w);
-  el.innerHTML = r.ok ? `${w && IMG.w[w] ? `<img src="${IMG.w[w]}" alt="">` : svg('check')}<div><b>${r.w ? WEAPONS[r.w].n : 'Shot heard'}</b><br><small>${r.note ? esc(r.note) : `Match ${Math.round(r.score * 100)}%`}</small></div>`
+  el.innerHTML = r.ok ? `${w && IMG.w[w] ? `<img src="${IMG.w[w]}" alt="">` : svg('check')}<div><b>${r.w ? WEAPONS[r.w].n : r.key ? oneName(r.key) + ' heard' : 'Shot heard'}</b><br><small>${r.note ? esc(r.note) : `Match ${Math.round(r.score * 100)}%`}</small></div>`
     : `${svg('close')}<div><b>Not recognized</b><br><small>Closest: ${r.w ? WEAPONS[r.w] ? WEAPONS[r.w].n : 'recorded sound' : 'recorded sound'} ${Math.round(r.score * 100)}%</small></div>`;
 }
 function updateMeter() {
@@ -541,7 +547,9 @@ function moveHTML() {
     <div class="sub"><span class="lbl">AR scope</span>
       <p class="note">Shows the back camera in a small window with monsters drawn where the radar says they are. Point the phone around to find them. Needs tracking calibrated.</p>
       <div class="row" style="justify-content:flex-start">${Scope.on ? `<button class="btn ghost" data-scope="off">${svg('close')} Close scope</button>` : `<button class="btn go" data-scope="on">${svg('target')} Open scope</button>`}</div>
-      ${Scope.err ? `<p class="note" style="color:var(--alert)">${esc(Scope.err)}</p>` : ''}</div>`;
+      ${Scope.err ? `<p class="note" style="color:var(--alert)">${esc(Scope.err)}</p>` : ''}
+      <span class="lbl">Pop up the camera when a monster is close or grabs you</span><div class="seg" data-g="autoScope">${[[true, 'On'], [false, 'Off']].map(([v, l]) => `<button aria-pressed="${(S.autoScope !== false) === v}" data-v="${v}">${l}</button>`).join('')}</div>
+      <p class="note">It closes again a few seconds after the danger is gone.</p></div>`;
 }
 function updateMove() {
   const st = $('#mvStat'); if (st) st.innerHTML = Track.on ? `${svg('radar')}<div><b>${Track.heading == null ? 'No compass yet' : 'Heading ' + Math.round(Track.heading) + '°'}</b><br><small>${Track.steps} steps · at ${ROOMS[Track.room] ? ROOMS[Track.room].n : '?'}${Track.cal ? '' : ' · not calibrated'}</small></div>` : `<span class="note">Tracking is off.</span>`;
@@ -603,6 +611,8 @@ function cmdHTML() {
       <p class="note">Auto: the commander phone always speaks; other phones speak when their trooper is in a different room from the commander.</p></div>
     <div class="sub"><span class="lbl">Radar direction (this phone)</span><div class="seg" data-g="rot">${[[0, 'Balcony up'], [90, 'Balcony right'], [180, 'Balcony down'], [270, 'Balcony left']].map(([v, l]) => `<button aria-pressed="${S.rot === v}" data-v="${v}">${l}</button>`).join('')}</div></div>
     <div class="row" style="justify-content:flex-start"><button class="btn ghost" data-x="sound">${svg('mic')} Blaster sounds</button><button class="btn ghost" data-x="move">${svg('feet')} Movement</button><button class="btn ghost" data-x="end">${svg('back')} Back to start screen</button></div>
+    ${G.phase !== 'start' ? `<div class="row" style="justify-content:flex-start"><button class="btn ${armed === 'restart' ? 'warn' : 'ghost'}" data-x="restart">${svg('replay')} ${armed === 'restart' ? 'Tap again to restart' : 'Restart this round'}</button></div>
+    <p class="note">Clears monsters, missions and crates, heals everyone and sends them to Base Alpha. Stars and inventories stay.</p>` : ''}
     ${Net.role ? `<p class="note">Game code: <b>${esc(Net.code)}</b> · ${esc(Net.status)}</p>` : ''}`;
 }
 function bindSheet() {
@@ -625,6 +635,7 @@ function bindSheet() {
       else if (g === 'off') { const o = new Set(G.cfg.off); o.has(v) ? o.delete(v) : o.add(v); const arr = [...o]; act({ a: 'set', k: 'off', v: arr }); G.cfg.off = arr; }
       else if (g === 'rot') { S.rot = +v; saveS(); }
       else if (g === 'speaker') { S.speaker = v; saveS(); }
+      else if (g === 'autoScope') { S.autoScope = v; saveS(); }
       else if (g === 'shotMode') { S.shotMode = v; saveS(); Mic.stopRec(); }
       else if (g === 'vcat') { vcat = v; $('#shBody').scrollTop = 0; }
       renderSheet(); return;
@@ -638,9 +649,9 @@ function bindSheet() {
     // sound setup
     if (d.mic === 'on') { try { await Mic.enable(); } catch (err) {} renderSheet(); return; }
     if (d.mic === 'off') { Mic.disable(); renderSheet(); return; }
-    if (d.rec) { Mic.startRec(d.rec, done => { renderSheet(); if (done) toast('Recorded!'); }); renderSheet(); return; }
+    if (d.rec) { Mic.startRec(d.rec, done => { if (done) addBlaster = false; renderSheet(); if (done) toast('Recorded!'); }); renderSheet(); return; }
     if (d.stoprec != null) { Mic.stopRec(); renderSheet(); return; }
-    if (d.clr) { Mic.clear(d.clr); renderSheet(); return; }
+    if (d.clr) { Mic.clear(d.clr); addBlaster = false; renderSheet(); return; }
     // voice lines
     if (d.vplay) { const ta = $(`textarea[data-vk="${d.vplay}"]`); const vers = (ta ? ta.value : Lines.text(d.vplay)).split('\n').map(x => x.trim()).filter(Boolean);
       const sample = { name: ME.name || 'Rookie', where: 'the kitchen', monster: 'zombie', count: 'Two zombies', weapon: 'Striker AR', reward: 'a medkit', rank: 'Sergeant', names: 'Dad and Rookie', medic: 'Dad' };
@@ -682,7 +693,9 @@ function bindSheet() {
       case 'say': { const v = $('#sayTxt').value; if (v.trim()) { act({ a: 'say', t: v }); $('#sayTxt').value = ''; toast('Announced'); } break; }
       case 'repeat': act({ a: 'repeat' }); break;
       case 'end': act({ a: 'end' }); closeSheet(); break;
+      case 'restart': if (armed !== 'restart') { armed = 'restart'; renderSheet(); break; } armed = null; act({ a: 'restart' }); if (Track.on) Track.resetTo('base'); closeSheet(); break;
       case 'sound': openSheet('sound'); break;
+      case 'addblaster': addBlaster = true; renderSheet(); break;
       case 'move': openSheet('move'); break;
       case 'export': Saves.exportFile(); break;
       case 'import': $('#importIn').click(); break;
@@ -721,6 +734,8 @@ export function ui() {
   $('#pauseBtn').innerHTML = svg(G.paused ? 'play' : 'pause');
   $('#moveFab').classList.toggle('live', Track.on && !!Track.cal);
   { const tf = $('#trackFab'), on = Track.on && !!Track.cal; if (tf.dataset.on !== String(on)) { tf.dataset.on = on; tf.innerHTML = svg('power') + `<i>${on ? 'ON' : 'OFF'}</i>`; tf.classList.toggle('live', on); tf.setAttribute('aria-label', on ? 'Tracking is on. Tap to turn off.' : 'Tracking is off. Tap to turn on.'); } }
+  { const cf = $('#camFab'), on = Scope.on; if (cf.dataset.on !== String(on)) { cf.dataset.on = on; cf.innerHTML = svg('cam') + `<i>${on ? 'ON' : 'OFF'}</i>`; cf.classList.toggle('live', on); cf.setAttribute('aria-label', on ? 'AR camera is on. Tap to turn off.' : 'AR camera is off. Tap to turn on.'); } }
+  autoScope(P);
   { const zf = $('#zoomFab'), z = !!S.mapZoom; if (zf.dataset.z !== String(z)) { zf.dataset.z = z; zf.innerHTML = svg(z ? 'house' : 'zoomin'); zf.setAttribute('aria-label', z ? 'Show the whole home' : 'Zoom in on me'); } }
   // banner
   const bn = $('#banner'); const talkers = Object.values(G.players).filter(p => p.talk && p.id !== ME.id);
@@ -759,6 +774,19 @@ export function ui() {
   if (sheetKind === 'move') updateMove();
 }
 
+// ---------- AR camera pops up by itself when a monster is close ----------
+let scopeHush = 0, scopeCalm = 0, scopeBusy = false;
+const AUTO_NEAR = 280; // map units, a bit less than a room
+function autoScope(P) {
+  if (S.autoScope === false || !P || !Track.on || !Track.cal) { if (Scope.auto) Scope.disable(); return; }
+  const now = performance.now(), live = G.phase === 'play' && !G.paused && !P.down;
+  const q = ppos(P);
+  const near = live && (P.grab > 0 || G.th.some(t => !T[t.k].friendly && !t.sl && canTarget(t, P) && (t.inC || Math.hypot(t.x - q.x, t.y - q.y) < AUTO_NEAR)));
+  if (near) scopeCalm = now;
+  if (near && !Scope.on && !scopeBusy && now > scopeHush) { scopeBusy = true; Scope.enable(true).catch(() => { scopeHush = now + 60000; }).finally(() => { scopeBusy = false; }); }
+  else if (Scope.on && Scope.auto && !near && now - scopeCalm > 5000) Scope.disable();
+}
+
 // ---------- loop ----------
 let lastT = performance.now(), uiT = 0, sheetT = 0;
 function loop(t) {
@@ -783,9 +811,15 @@ export function startUI() {
     else { try { await Track.enable(); Snd.play('pop'); toast('Tracking on'); } catch (e) { toast(Track.err || 'Motion sensors not available'); } }
     ui();
   });
+  $('#camFab').addEventListener('click', async () => {
+    unlock();
+    if (Scope.on) { const wasAuto = Scope.auto; Scope.disable(); scopeHush = performance.now() + (wasAuto ? 25000 : 0); Snd.play('tick'); }
+    else { try { await Scope.enable(); Snd.play('pop'); if (!Track.cal) toast('Calibrate tracking to see monsters in the camera'); } catch (e) { toast(Scope.err || 'Camera not available'); } }
+    ui();
+  });
   $('#zoomFab').addEventListener('click', () => { unlock(); S.mapZoom = !S.mapZoom; saveS(); Snd.play('tick'); ui(); });
   $('#scopeCv').addEventListener('pointerdown', e => { const id = Scope.pick(e); if (id != null) { sel = id; Snd.play('tick'); } });
-  $('#scopeX').innerHTML = svg('close'); $('#scopeX').addEventListener('click', () => Scope.disable());
+  $('#scopeX').innerHTML = svg('close'); $('#scopeX').addEventListener('click', () => { if (Scope.auto) scopeHush = performance.now() + 25000; Scope.disable(); ui(); });
   setView(S.view === 'field' ? 'field' : 'dock'); ticker(G.last, 'radio');
   requestAnimationFrame(loop);
 }
