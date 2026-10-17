@@ -316,8 +316,9 @@ function drawMap() {
   c.clearRect(0, 0, W, H);
   const P0 = me(), sh = shotNow;
   const s0 = Math.min(W / 900, H / 1350) * .97; let s = s0, ox = (W - 900 * s) / 2, oy = (H - 1350 * s) / 2;
-  if (S.mapZoom && P0) { // zoomed in and following me
-    s = s0 * 2.2; const q = ppos(P0);
+  const Z = ZOOMS[mapZoomLevel()];
+  if (Z > 1) { // zoomed in: follow me when tracking, otherwise stay where the map was tapped
+    s = s0 * Z; const q = P0 && Track.on && Track.cal && Track.p ? ppos(P0) : mapFocus || (P0 ? ppos(P0) : B);
     ox = 900 * s > W ? clamp(W / 2 - q.x * s, W - 900 * s, 0) : (W - 900 * s) / 2;
     oy = 1350 * s > H ? clamp(H * .55 - q.y * s, H - 1350 * s, 0) : (H - 1350 * s) / 2;
   }
@@ -325,7 +326,7 @@ function drawMap() {
   mapGeo = { s, ox, oy };
   const poly = pts => planPath(c, M, pts, 0);
   c.fillStyle = 'rgba(211,194,140,.06)'; c.fillRect(...M(600, 660), 280 * s, 360 * s);
-  const fs = Math.round((S.mapZoom ? 13 : 11) * dpr);
+  const fs = Math.round((Z > 1 ? 13 : 11) * dpr);
   c.fillStyle = 'rgba(211,194,140,.35)'; c.font = `${fs}px "Share Tech Mono", ui-monospace, monospace`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('OUTSIDE', ...M(740, 760));
   for (const id in SHAPES) {
     poly(SHAPES[id]); c.fillStyle = id === 'base' ? 'rgba(255,200,58,.2)' : id === 'balcony' ? 'rgba(134,220,255,.08)' : '#222b1b'; c.fill();
@@ -355,9 +356,12 @@ function drawMap() {
   for (const tu of G.turrets) { const [x, y] = M(ROOMS[tu.room].x, ROOMS[tu.room].y); drawItem(c, 'turret', x + 30 * s, y - 30 * s, Math.max(15 * dpr, 44 * s)); }
   mapHits = [];
   if (G.power) { const base = Math.max(7.5 * dpr, 24 * s); for (const t of G.th) { const [x, y] = M(t.x, t.y), r = threatR(t.k, base); drawThreat(c, t, x, y, r, dpr, 1); mapHits.push({ id: t.id, x, y, r: Math.max(r * 1.5, 14 * dpr) }); } }
-  const ar = Math.max(8 * dpr, 24 * s), drawn = [];
+  const ar = Math.max(8 * dpr, 24 * s), drawn = []; playerHits = [];
+  if (pickedP && (!G.players[pickedP] || performance.now() > pickedUntil)) pickedP = null;
   for (const Q of onlinePlayers()) {
     const q = ppos(Q); let [px, y] = M(q.x, q.y); for (const o of drawn) if (Math.hypot(o[0] - px, o[1] - y) < ar * 1.6) px += ar * 1.8; drawn.push([px, y]);
+    playerHits.push({ id: Q.id, x: px, y, r: Math.max(ar * 1.3, 16 * dpr) });
+    if (pickedP === Q.id) { circ(c, px, y + ar * .1, ar * (1.9 + .25 * Math.sin(tnow * 7))); c.strokeStyle = '#ffc83a'; c.lineWidth = 3.5 * dpr; c.setLineDash([5 * dpr, 4 * dpr]); c.stroke(); c.setLineDash([]); }
     if (Q.id === ME.id && sh && sh.aim != null) myHeading(c, px, y, ar * .8, dpr, { a: sh.aim * Math.PI / 180 });
     c.save(); if (Q.down) c.globalAlpha = .45; drawAvatar(c, Q.av, Q.color, px, y, ar); c.restore();
     if (Q.id === ME.id) { circ(c, px, y + ar * .1, ar * 1.3); c.strokeStyle = COLORS[Q.color % COLORS.length]; c.lineWidth = 2.5 * dpr; c.stroke(); }
@@ -366,17 +370,55 @@ function drawMap() {
   }
   if (G.chopper > 0) { const [bx, by] = M(ROOMS.balcony.x, ROOMS.balcony.y), p = Math.min(1, G.chopper * 1.3); heli(c, bx, by - (1 - p) * 200 * dpr, Math.max(18 * dpr, 40 * s), tnow); }
   if (!G.power && (G.phase === 'play')) { c.fillStyle = '#ff6a3d'; c.font = `${Math.round(20 * dpr)}px "Black Ops One", Impact, sans-serif`; c.fillText('RADAR OFFLINE', W / 2, 30 * dpr); }
+  if (press && press.armed) { const p = Math.min(1, (performance.now() - press.t0) / HOLD_MS), r = 30 * dpr;
+    circ(c, press.x, press.y, r); c.fillStyle = 'rgba(12,16,10,.45)'; c.fill();
+    c.beginPath(); c.arc(press.x, press.y, r, -Math.PI / 2, -Math.PI / 2 + TAU * p); c.strokeStyle = '#ffc83a'; c.lineWidth = 6 * dpr; c.stroke(); }
 }
 function canvasPt(cv, e) { const r = cv.getBoundingClientRect(), d = cv.width / r.width; return [(e.clientX - r.left) * d, (e.clientY - r.top) * d, d]; }
 function pickHit(list, x, y, d) { let best = null, bd = 1e9; for (const h of list) { const dd = Math.hypot(h.x - x, h.y - y); if (dd < h.r + 12 * d && dd < bd) { bd = dd; best = h; } } return best; }
 function bindCanvases() {
   rc().addEventListener('pointerdown', e => { const [x, y, d] = canvasPt(rc(), e); const h = pickHit(hits, x, y, d); sel = h ? h.id : null; if (h) Snd.play('tick'); });
-  mc().addEventListener('pointerdown', e => {
-    const [x, y, d] = canvasPt(mc(), e); const h = pickHit(mapHits, x, y, d);
-    if (h) { sel = h.id; Snd.play('tick'); return; }
-    if (!mapGeo) return; const ux = (x - mapGeo.ox) / mapGeo.s, uy = (y - mapGeo.oy) / mapGeo.s; const room = roomAt(ux, uy);
-    if (room && G.phase === 'play') { act({ a: 'move', room }); if (Track.on) Track.resetTo(room); Snd.play('tick'); toast(`You are at: ${ROOMS[room].n}`); }
+  // Map: tap = target a monster / pick a trooper (commander) / zoom; hold = say where you are (commander: everyone).
+  const cv = mc();
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  cv.addEventListener('pointerdown', e => {
+    unlock(); const [x, y, d] = canvasPt(cv, e);
+    press = { x, y, d, sx: e.clientX, sy: e.clientY, t0: performance.now(), armed: G.phase === 'play' && !!roomUnder(x, y), id: e.pointerId };
+    clearTimeout(pressT); if (press.armed) pressT = setTimeout(holdDone, HOLD_MS);
   });
+  cv.addEventListener('pointermove', e => { if (press && Math.hypot(e.clientX - press.sx, e.clientY - press.sy) > 14) { clearTimeout(pressT); press = null; } });
+  const cancel = () => { clearTimeout(pressT); press = null; };
+  cv.addEventListener('pointercancel', cancel); cv.addEventListener('pointerleave', cancel);
+  cv.addEventListener('pointerup', () => { if (!press) return; const p = press; cancel(); if (performance.now() - p.t0 < HOLD_MS) mapTap(p.x, p.y, p.d); });
+}
+const HOLD_MS = 600, ZOOMS = [1, 1.8, 3];
+let press = null, pressT = null, mapFocus = null, pickedP = null, pickedUntil = 0, playerHits = [];
+const mapZoomLevel = () => (S.mapZoom === true ? 1 : clamp(S.mapZoom | 0, 0, ZOOMS.length - 1));
+const toMap = (x, y) => (mapGeo ? { x: (x - mapGeo.ox) / mapGeo.s, y: (y - mapGeo.oy) / mapGeo.s } : null);
+function roomUnder(x, y) { const u = toMap(x, y); return u ? roomAt(u.x, u.y) : null; }
+function mapTap(x, y, d) {
+  const h = pickHit(mapHits, x, y, d);
+  if (h) { sel = h.id; Snd.play('tick'); return; }
+  if (Net.isHost() && G.phase === 'play') {
+    const ph = pickHit(playerHits, x, y, d);
+    if (ph) { pickedP = pickedP === ph.id ? null : ph.id; pickedUntil = performance.now() + 10000; Snd.play('tick');
+      if (pickedP) toast(`Now tap where ${G.players[ph.id].name} is`); return; }
+    if (pickedP) { const room = roomUnder(x, y); if (room) { placeOne(pickedP, room); pickedP = null; return; } }
+  }
+  // zoom: 1x -> 1.8x -> 3x -> 1x, centred on the tap
+  const u = toMap(x, y); if (u) mapFocus = { x: clamp(u.x, 0, 900), y: clamp(u.y, 0, 1350) };
+  S.mapZoom = (mapZoomLevel() + 1) % ZOOMS.length; saveS(); Snd.play('tick'); ui();
+}
+function holdDone() {
+  const p = press; press = null; if (!p) return; const room = roomUnder(p.x, p.y); if (!room || G.phase !== 'play') return;
+  try { navigator.vibrate && navigator.vibrate(40); } catch (e) {}
+  if (pickedP) { placeOne(pickedP, room); pickedP = null; return; }
+  if (Net.isHost() && onlinePlayers().length > 1) { act({ a: 'allto', room }); if (Track.on) Track.resetTo(room); Snd.play('pop'); toast(`Everyone is at: ${ROOMS[room].n}`); return; }
+  placeOne(ME.id, room);
+}
+function placeOne(id, room) {
+  act({ a: 'move', room, who: id }); if (id === ME.id && Track.on) Track.resetTo(room); Snd.play('pop');
+  toast(id === ME.id ? `You are at: ${ROOMS[room].n}` : `${G.players[id] ? G.players[id].name : 'Trooper'} is at: ${ROOMS[room].n}`);
 }
 
 // ---------- lobby (start screen) ----------
@@ -736,7 +778,9 @@ export function ui() {
   { const tf = $('#trackFab'), on = Track.on && !!Track.cal; if (tf.dataset.on !== String(on)) { tf.dataset.on = on; tf.innerHTML = svg('power') + `<i>${on ? 'ON' : 'OFF'}</i>`; tf.classList.toggle('live', on); tf.setAttribute('aria-label', on ? 'Tracking is on. Tap to turn off.' : 'Tracking is off. Tap to turn on.'); } }
   { const cf = $('#camFab'), on = Scope.on; if (cf.dataset.on !== String(on)) { cf.dataset.on = on; cf.innerHTML = svg('cam') + `<i>${on ? 'ON' : 'OFF'}</i>`; cf.classList.toggle('live', on); cf.setAttribute('aria-label', on ? 'AR camera is on. Tap to turn off.' : 'AR camera is off. Tap to turn on.'); } }
   autoScope(P);
-  { const zf = $('#zoomFab'), z = !!S.mapZoom; if (zf.dataset.z !== String(z)) { zf.dataset.z = z; zf.innerHTML = svg(z ? 'house' : 'zoomin'); zf.setAttribute('aria-label', z ? 'Show the whole home' : 'Zoom in on me'); } }
+  { const zf = $('#zoomFab'), z = mapZoomLevel(); if (zf.dataset.z !== String(z)) { zf.dataset.z = z; zf.innerHTML = svg(z === ZOOMS.length - 1 ? 'house' : 'zoomin') + `<i>${['1×', '2×', '3×'][z]}</i>`; zf.setAttribute('aria-label', 'Map zoom ' + (z + 1) + ' of 3. Tap to change.'); }
+    const hint = Net.isHost() && onlinePlayers().length > 1 ? 'Tap: zoom · Hold: move all · Tap a trooper, then a room' : 'Tap: zoom · Hold a room: you are here';
+    if ($('.maphint').textContent !== hint) $('.maphint').textContent = hint; }
   // banner
   const bn = $('#banner'); const talkers = Object.values(G.players).filter(p => p.talk && p.id !== ME.id);
   let bh = '', bc = '';
@@ -817,10 +861,10 @@ export function startUI() {
     else { try { await Scope.enable(); Snd.play('pop'); if (!Track.cal) toast('Calibrate tracking to see monsters in the camera'); } catch (e) { toast(Scope.err || 'Camera not available'); } }
     ui();
   });
-  $('#zoomFab').addEventListener('click', () => { unlock(); S.mapZoom = !S.mapZoom; saveS(); Snd.play('tick'); ui(); });
+  $('#zoomFab').addEventListener('click', () => { unlock(); mapFocus = null; S.mapZoom = (mapZoomLevel() + 1) % ZOOMS.length; saveS(); Snd.play('tick'); ui(); });
   $('#scopeCv').addEventListener('pointerdown', e => { const id = Scope.pick(e); if (id != null) { sel = id; Snd.play('tick'); } });
   $('#scopeX').innerHTML = svg('close'); $('#scopeX').addEventListener('click', () => { if (Scope.auto) scopeHush = performance.now() + 25000; Scope.disable(); ui(); });
   setView(S.view === 'field' ? 'field' : 'dock'); ticker(G.last, 'radio');
   requestAnimationFrame(loop);
 }
-App.ui = { ticker, onShot, onDetect, act, ui, toast };
+App.ui = { ticker, onShot, onDetect, act, ui, toast, mapGeo: () => mapGeo, playerHits: () => playerHits, mapHitsNow: () => mapHits, picked: () => pickedP, sel: () => sel };

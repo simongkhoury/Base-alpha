@@ -551,6 +551,7 @@ export function apply(a, pid) {
     case 'pos': setPos(pid, +a.x, +a.y); break;
     case 'checkpoint': if (ROOMS[a.room] && P) { move(pid, a.room); sfx('pickup', { to: pid }); say(L('checkpoint', { where: ROOMS[a.room].n }), 1, 'pin', 'cp' + pid, pid, { every: 2000 }); } break;
     case 'allbase': for (const Q of online()) move(Q.id, 'base'); say(L('all_base'), 2, 'home'); break;
+    case 'allto': if (ROOMS[a.room]) { for (const Q of online()) move(Q.id, a.room); sfx('pickup'); } break;
     case 'step': missionAct(pid); break;
     case 'pickup': pickUp(pid, a.id); break;
     case 'ptt': if (P) P.talk = !!a.on; break;
