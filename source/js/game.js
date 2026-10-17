@@ -1,7 +1,7 @@
 // Game state and the simulation. Only the commander's phone runs tick() and apply();
 // other phones send actions and draw the state they receive.
 import { App, rnd, pick, clamp } from './core.js';
-import { ROOMS, B, route, roomAt, MISSION_ROOMS, T, WEAPONS, MIN_ACC, FREEZE_ROUND_CD, ITEMS, GEAR, GEAR_ORDER, WEAPON_ORDER, starterInv, BOOST_SHOTS, RANKS, rankOf, MIS, CALLS, CONTACT_R, GRAB } from './data.js';
+import { ROOMS, B, AREA, route, roomAt, MISSION_ROOMS, T, WEAPONS, MIN_ACC, FREEZE_ROUND_CD, ITEMS, GEAR, GEAR_ORDER, WEAPON_ORDER, starterInv, BOOST_SHOTS, RANKS, rankOf, MIS, CALLS, CONTACT_R, GRAB } from './data.js';
 import { L, Lines, LINES } from './lines.js';
 import { odds, pickTarget } from './aim.js';
 
@@ -328,13 +328,21 @@ function pickUp(pid, id) {
 }
 
 // ---------- movement, contact, injuries ----------
-function move(pid, room, keepPos) {
+// keepPos: the tracker already put them there. at: an exact spot picked on the map.
+// A manual move bumps pv so that phone's step tracker restarts from the new spot.
+function move(pid, room, keepPos, at) {
   const P = G.players[pid]; if (!P || !ROOMS[room]) return;
-  if (!keepPos) place(P, room); else P.room = room;
+  if (at) { P.room = room; P.x = at.x; P.y = at.y; } else if (!keepPos) place(P, room); else P.room = room;
+  if (!keepPos) P.pv = (P.pv | 0) + 1;
   if (P.down && room === 'base' && !(P.rec > 0)) { P.rec = 8; say(L('recovering', { name: P.name }), 1, 'bed'); }
   arriveCheck(P);
 }
 // A phone with movement tracking reports its position; the room follows from it.
+// A spot from a map long-press, accepted only if it really is inside that room.
+function spotIn(a, room) {
+  const x = +a.x, y = +a.y; if (!isFinite(x) || !isFinite(y) || x < 0 || x > 900 || y < 0 || y > 1350) return null;
+  const r = roomAt(x, y); return r && AREA(r) === AREA(room) ? { x, y } : null;
+}
 function setPos(pid, x, y) {
   const P = G.players[pid]; if (!P || !isFinite(x) || !isFinite(y)) return;
   x = clamp(x, 0, 900); y = clamp(y, 0, 1350); const r = roomAt(x, y); if (!r) return;
@@ -547,11 +555,15 @@ export function apply(a, pid) {
     case 'scan': scan(); break;
     case 'dance': dance(); break;
     case 'hold': if (['repair', 'gen', 'emerg'].includes(a.w)) { G.holds[a.w] = .6; if (a.w !== 'gen') G.repairBy = pid; } break;
-    case 'move': if (ROOMS[a.room]) move(a.who && G.players[a.who] ? a.who : pid, a.room); break;
+    case 'move': if (ROOMS[a.room]) move(a.who && G.players[a.who] ? a.who : pid, a.room, false, spotIn(a, a.room)); break;
     case 'pos': setPos(pid, +a.x, +a.y); break;
     case 'checkpoint': if (ROOMS[a.room] && P) { move(pid, a.room); sfx('pickup', { to: pid }); say(L('checkpoint', { where: ROOMS[a.room].n }), 1, 'pin', 'cp' + pid, pid, { every: 2000 }); } break;
     case 'allbase': for (const Q of online()) move(Q.id, 'base'); say(L('all_base'), 2, 'home'); break;
-    case 'allto': if (ROOMS[a.room]) { for (const Q of online()) move(Q.id, a.room); sfx('pickup'); } break;
+    case 'allto': if (ROOMS[a.room]) { const at = spotIn(a, a.room), list = online();
+      list.forEach((Q, i) => { let p = at; // spread a little around the spot, staying in the room
+        if (at && list.length > 1) { const ang = i / list.length * Math.PI * 2, q = { x: at.x + Math.cos(ang) * 28, y: at.y + Math.sin(ang) * 28 }; p = spotIn(q, a.room) || at; }
+        move(Q.id, a.room, false, p); });
+      sfx('pickup'); } break;
     case 'step': missionAct(pid); break;
     case 'pickup': pickUp(pid, a.id); break;
     case 'ptt': if (P) P.talk = !!a.on; break;
@@ -605,7 +617,7 @@ export function enc() {
     drops: G.drops.map(d => ({ id: d.id, room: d.room, kind: d.kind, t: Math.ceil(d.t) })),
     tur: G.turrets.map(t => ({ room: t.room, t: Math.ceil(t.t) })),
     pl: Object.values(G.players).map(p => ({ id: p.id, name: p.name, color: p.color, av: p.av, room: p.room, x: Math.round(p.x), y: Math.round(p.y), inj: Math.ceil(p.inj), down: p.down ? 1 : 0, rec: Math.ceil(p.rec),
-      stars: p.stars, kills: p.kills, inv: p.inv, wpn: p.wpn, mode: p.mode, cl: +p.cdLaser.toFixed(1), cf: +p.cdFrz.toFixed(1), talk: p.talk ? 1 : 0, on: p.online ? 1 : 0, peer: p.peer, g: +(p.grab || 0).toFixed(2) })),
+      stars: p.stars, kills: p.kills, inv: p.inv, wpn: p.wpn, mode: p.mode, cl: +p.cdLaser.toFixed(1), cf: +p.cdFrz.toFixed(1), talk: p.talk ? 1 : 0, on: p.online ? 1 : 0, peer: p.peer, g: +(p.grab || 0).toFixed(2), pv: p.pv | 0 })),
     th: G.th.slice(0, 40).map(t => [t.id, t.k, Math.round(t.x), Math.round(t.y), t.hp, t.mx, (t.fz > 0 ? 1 : 0) | (t.vul > 0 ? 2 : 0) | (t.sl ? 4 : 0) | (t.at ? 8 : 0) | (!t.rv ? 32 : 0) | (t.dz > 0 ? 64 : 0) | (t.hitT > 0 ? 128 : 0) | (t.inC ? 256 : 0)])
   };
 }
@@ -630,7 +642,7 @@ export function dec(d) {
       const room = ROOMS[p.room] ? p.room : 'base';
       Object.assign(Q, { name: String(p.name || '').slice(0, 16), color: num(p.color), av: num(p.av), room, x: num(p.x, ROOMS[room].x), y: num(p.y, ROOMS[room].y), inj: num(p.inj), down: !!p.down, rec: num(p.rec),
         stars: num(p.stars), kills: num(p.kills), inv: sanitizeInv(p.inv), wpn: WEAPONS[p.wpn] ? p.wpn : 'handgun', mode: ['freeze', 'bomb'].includes(p.mode) ? p.mode : null,
-        cdLaser: num(p.cl), cdFrz: num(p.cf), cdFire: Q.cdFire || 0, talk: !!p.talk, online: !!p.on, peer: typeof p.peer === 'string' ? p.peer : null, grab: num(p.g) });
+        cdLaser: num(p.cl), cdFrz: num(p.cf), cdFire: Q.cdFire || 0, talk: !!p.talk, online: !!p.on, peer: typeof p.peer === 'string' ? p.peer : null, grab: num(p.g), pv: num(p.pv) });
     }
     for (const id of Object.keys(G.players)) if (!seen.has(id)) delete G.players[id];
   }

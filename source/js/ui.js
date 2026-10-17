@@ -403,7 +403,7 @@ function mapTap(x, y, d) {
     const ph = pickHit(playerHits, x, y, d);
     if (ph) { pickedP = pickedP === ph.id ? null : ph.id; pickedUntil = performance.now() + 10000; Snd.play('tick');
       if (pickedP) toast(`Now tap where ${G.players[ph.id].name} is`); return; }
-    if (pickedP) { const room = roomUnder(x, y); if (room) { placeOne(pickedP, room); pickedP = null; return; } }
+    if (pickedP) { const room = roomUnder(x, y); if (room) { placeOne(pickedP, room, toMap(x, y)); pickedP = null; return; } }
   }
   // zoom: 1x -> 1.8x -> 3x -> 1x, centred on the tap
   const u = toMap(x, y); if (u) mapFocus = { x: clamp(u.x, 0, 900), y: clamp(u.y, 0, 1350) };
@@ -411,13 +411,15 @@ function mapTap(x, y, d) {
 }
 function holdDone() {
   const p = press; press = null; if (!p) return; const room = roomUnder(p.x, p.y); if (!room || G.phase !== 'play') return;
+  const u = toMap(p.x, p.y), at = { x: Math.round(u.x), y: Math.round(u.y) };
   try { navigator.vibrate && navigator.vibrate(40); } catch (e) {}
-  if (pickedP) { placeOne(pickedP, room); pickedP = null; return; }
-  if (Net.isHost() && onlinePlayers().length > 1) { act({ a: 'allto', room }); if (Track.on) Track.resetTo(room); Snd.play('pop'); toast(`Everyone is at: ${ROOMS[room].n}`); return; }
-  placeOne(ME.id, room);
+  if (pickedP) { placeOne(pickedP, room, at); pickedP = null; return; }
+  if (Net.isHost() && onlinePlayers().length > 1) { act({ a: 'allto', room, x: at.x, y: at.y }); if (Track.on) Track.resetTo(room, at); Snd.play('pop'); toast(`Everyone is at: ${ROOMS[room].n}`); return; }
+  placeOne(ME.id, room, at);
 }
-function placeOne(id, room) {
-  act({ a: 'move', room, who: id }); if (id === ME.id && Track.on) Track.resetTo(room); Snd.play('pop');
+function placeOne(id, room, at) {
+  at = at ? { x: Math.round(at.x), y: Math.round(at.y) } : null;
+  act(Object.assign({ a: 'move', room, who: id }, at || {})); if (id === ME.id && Track.on) Track.resetTo(room, at); Snd.play('pop');
   toast(id === ME.id ? `You are at: ${ROOMS[room].n}` : `${G.players[id] ? G.players[id].name : 'Trooper'} is at: ${ROOMS[room].n}`);
 }
 

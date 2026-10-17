@@ -84,10 +84,11 @@ export const Track = {
     const now = performance.now(); if (now - this.lastSendT < 200) { clearTimeout(this._t); this._t = setTimeout(() => this.send(), 220); return; }
     this.lastSendT = now; this.lastSentRoom = this.room; App.ui.act({ a: 'pos', x: Math.round(this.p.x), y: Math.round(this.p.y) });
   },
-  resetTo(room) { const r = ROOMS[room] || B; this.p = { x: r.x, y: r.y }; this.room = ROOMS[room] ? room : 'base'; },
+  resetTo(room, at) { const r = at && isFinite(at.x) && isFinite(at.y) ? at : ROOMS[room] || B; this.p = { x: r.x, y: r.y }; this.room = ROOMS[room] ? room : 'base'; },
   // Called with the commander's view of this trooper: a manual move (map tap, mission button, commander) re-anchors tracking.
   sync(P) {
     if (!this.on || !P) return;
+    if (P.pv !== this.pv) { const first = this.pv == null; this.pv = P.pv; if (!first) { this.resetTo(P.room, P); return; } } // moved on the map
     if (P.room !== this.room && P.room !== this.lastSentRoom && performance.now() - this.lastSendT > 800) this.resetTo(P.room);
   },
   // ----- calibration -----
